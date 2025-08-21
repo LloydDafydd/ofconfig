@@ -41,6 +41,13 @@ cd $WORK_DIR
 # Copy base case
 cp -r /$HOME/Isambaseball/openfoam_case/* .
 
+# Fix forceCoeffs function definition to add missing pitchAxis parameter
+echo "Fixing forceCoeffs configuration..."
+sed -i '/lRef.*0.0732;/a\        pitchAxis       (0 1 0);        // Pitch axis (y-axis for baseball rotation)' system/controlDict
+
+# Fix patch specification in force functions to handle parallel decomposition
+sed -i 's/patches.*baseball.*/patches         ("baseball.*");      \/\/ Surface patches including parallel boundaries/' system/controlDict
+
 # Install pre-generated mesh
 if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
@@ -69,7 +76,17 @@ echo "  Angular velocity: $OMEGA rad/s"
 # Update velocity in boundary conditions
 sed -i "s/uniform (38.0 0 0)/uniform ($VELOCITY 0 0)/" 0/U
 
-# Update rotational velocity for spinning baseball
+# Domain decomposition for parallel execution BEFORE creating custom fields
+echo "Decomposing domain for $SLURM_NTASKS cores..."
+decomposePar > log.decomposePar 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Domain decomposition failed"
+    exit 1
+fi
+
+# Create omega field after decomposition, ensuring parallel consistency
+echo "Creating omega field with parallel boundary conditions..."
 cat > 0/omega << EOF
 /*--------------------------------*- C++ -*----------------------------------*\
 FoamFile
@@ -119,40 +136,13 @@ boundaryField
 }
 EOF
 
-# Domain decomposition for parallel execution
-echo "Decomposing domain for $SLURM_NTASKS cores..."
-decomposePar > log.decomposePar 2>&1
+# Distribute the new omega field to processor directories using redistributePar
+echo "Distributing omega field to processor directories..."
+redistributePar -overwrite > log.redistributePar 2>&1
 
 if [ $? -ne 0 ]; then
-    echo "ERROR: Domain decomposition failed"
-    exit 1
-fi
-
-# Verify decomposition created processor directories and that each has the 0/ files
-echo "Verifying decomposition and presence of 0/ files in processor directories..."
-NUM_PROCS=${SLURM_NTASKS:-1}
-MISSING_PROC=0
-for ((i=0;i<NUM_PROCS;i++)); do
-    PDIR="processor${i}"
-    if [ ! -d "$PDIR/0" ]; then
-        echo "ERROR: Expected directory $PDIR/0 does not exist"
-        MISSING_PROC=1
-    else
-        # If specific runtime fields (e.g. omega) are missing, copy the main 0/ files as a fallback
-        if [ ! -f "$PDIR/0/omega" ]; then
-            echo "Notice: $PDIR/0/omega missing — copying 0/* -> $PDIR/0/"
-            cp -r 0/* "$PDIR/0/" || {
-                echo "ERROR: Failed to copy 0/* to $PDIR/0/"
-                exit 1
-            }
-        fi
-    fi
-done
-
-if [ "$MISSING_PROC" -ne 0 ]; then
-    echo "ERROR: One or more processor directories are missing; check log.decomposePar"
-    ls -l processor* || true
-    tail -n 80 log.decomposePar || true
+    echo "ERROR: Field redistribution failed"
+    tail -50 log.redistributePar
     exit 1
 fi
 
