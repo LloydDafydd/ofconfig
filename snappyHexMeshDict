@@ -1,0 +1,240 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    object      snappyHexMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+/*
+ * SNAPPYHEXMESH CONFIGURATION FOR SYMMETRIC SPINNING BASEBALL
+ * ===========================================================
+ * 
+ * This configuration ensures mesh symmetry is preserved while creating
+ * high-quality boundary layers around the spinning baseball. The mesh
+ * is optimized for 0.8-second simulation duration.
+ */
+
+// Which of the steps to run
+castellatedMesh true;
+snap            true;
+addLayers       true;
+
+// Geometry. Definition of all surfaces. All surfaces are of class
+// searchableSurface.
+geometry
+{
+    baseball.stl
+    {
+        type triSurfaceMesh;
+        file "constant/triSurface/baseball.stl";
+        name baseball;
+    }
+    
+    // Symmetric refinement box around baseball
+    refinementBox
+    {
+        type searchableBox;
+        min (-0.2 -0.2 -0.2);
+        max ( 0.2  0.2  0.2);  // Symmetric refinement box around baseball
+    }
+    
+    // Additional wake refinement box for Magnus effect capture
+    wakeRefinementBox
+    {
+        type searchableBox;
+        min (-0.1 -0.3 -0.3);  // Extends more in lateral directions
+        max ( 0.8  0.3  0.3);  // Captures wake development
+    }
+}
+
+// Settings for the castellatedMesh generation.
+castellatedMeshControls
+{
+    // Refinement parameters - high quality mesh for accuracy
+    maxLocalCells 3000000;   // Reduced for reasonable size
+    maxGlobalCells 6000000;  // Reduced for reasonable size
+    minRefinementCells 5;    // Reduced for finer refinement
+    maxLoadUnbalance 0.10;
+    nCellsBetweenLevels 2;   // Reduced for smoother transitions
+    
+    // Tolerance for point merging - ensures symmetry preservation
+    tolerance 1e-4;  // Tighter tolerance for better symmetry
+
+    // Explicit feature edge refinement (disabled for now)
+    features
+    (
+        // {
+        //     file "baseball.eMesh";
+        //     level 4;  // Increased to 4 for very fine features
+        // }
+    );
+
+    // Surface based refinement
+    refinementSurfaces
+    {
+        baseball
+        {
+            level (6 7);  // HIGH surface resolution - 6 min, 7 max (more reasonable)
+            patchInfo
+            {
+                type wall;
+                inGroups (baseballGroup);
+            }
+        }
+    }
+
+    // Resolve sharp angles - important for symmetric meshing
+    resolveFeatureAngle 30;
+
+    // Region-wise refinement - symmetric about centerlines
+    refinementRegions
+    {
+        refinementBox
+        {
+            mode inside;
+            levels ((1E15 2));  // Modest refinement near baseball (level 2 - much coarser)
+        }
+        
+        wakeRefinementBox
+        {
+            mode inside; 
+            levels ((1E15 5));  // FINE wake resolution for Magnus effect (level 5 - restored)
+        }
+    }
+
+    // Mesh selection - positioned for symmetric flow
+    locationInMesh (1.0 0.0 0.0);  // Point in flow domain, on centerline for symmetry
+
+    // Whether any faceZones (as specified in the refinementSurfaces)
+    // are only on the boundary of corresponding cellZones or also allow
+    // free-standing zone faces. Not used if there are no faceZones.
+    allowFreeStandingZoneFaces true;
+}
+
+// Settings for the snapping.
+snapControls
+{
+    nSmoothPatch 3;
+    tolerance 2.0;  // Balanced tolerance for symmetry preservation
+    nSolveIter 30;
+    nRelaxIter 5;
+    nFeatureSnapIter 10;
+    implicitFeatureSnap false;
+    explicitFeatureSnap true;
+    multiRegionFeatureSnap false;
+}
+
+// Settings for the layer addition.
+addLayersControls
+{
+    relativeSizes true;
+
+    // Per final patch (so not geometry!) the layer information
+    layers
+    {
+        baseball
+        {
+            nSurfaceLayers 12;  // Good boundary layers (reduced from 15)
+        }
+    }
+
+    // Expansion factor for layer mesh
+    expansionRatio 1.2;
+
+    // Wanted thickness of final added cell layer. If multiple layers
+    // is the thickness of the layer furthest away from the wall.
+    finalLayerThickness 0.3;
+
+    // Minimum thickness of cell layer. If for any reason layer
+    // cannot be above minThickness do not add layer.
+    minThickness 0.1;
+
+    // If points get not extruded do nGrow layers of connected faces that are
+    // also not grown. This helps convergence of the layer addition process
+    // close to features.
+    nGrow 0;
+
+    // Advanced settings
+
+    // When not to extrude surface. 0 is flat surface, 90 is when two faces
+    // are perpendicular
+    featureAngle 60;
+
+    // At non-patched sides allow mesh to slip if extrusion direction makes
+    // angle larger than slipFeatureAngle.
+    slipFeatureAngle 30;
+
+    // Maximum number of snapping relaxation iterations. Should stop
+    // before upon reaching a correct mesh.
+    nRelaxIter 5;  // Increased for better symmetry
+
+    // Number of smoothing iterations of surface normals
+    nSmoothSurfaceNormals 1;
+
+    // Number of smoothing iterations of interior mesh movement direction
+    nSmoothNormals 3;
+
+    // Smooth layer thickness over surface patches
+    nSmoothThickness 10;
+
+    // Stop layer growth on highly warped cells
+    maxFaceThicknessRatio 0.5;
+
+    // Reduce layer growth where ratio thickness to medial
+    // distance is large
+    maxThicknessToMedialRatio 0.3;
+
+    // Angle used to pick up medial axis points
+    // Note: changed(corrected) w.r.t 17x! 90 degrees corresponds to 130 in 17x.
+    minMedialAxisAngle 90;
+
+    // Create buffer region for new layer terminations
+    nBufferCellsNoExtrude 0;
+
+    // Overall max number of layer addition iterations. The mesher will exit
+    // if it reaches this number of iterations; possibly with an illegal
+    // mesh.
+    nLayerIter 50;
+}
+
+// Generic mesh quality settings. At any undoable phase these determine
+// where to undo.
+meshQualityControls
+{
+    // Tightened quality controls for symmetric mesh
+    maxNonOrtho 65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave 80;
+    minVol 1e-13;
+    minTetQuality 1e-15;  // Stricter quality for symmetry
+    minArea -1;
+    minTwist 0.02;
+    minDeterminant 0.001;
+    minFaceWeight 0.02;
+    minVolRatio 0.01;
+    minTriangleTwist -1;
+
+    // Advanced
+    nSmoothScale 4;
+    errorReduction 0.75;
+    relaxed
+    {
+        maxNonOrtho 75;
+    }
+}
+
+// Advanced
+debug 0;
+// Generic mesh quality settings - tight tolerance for symmetry
+mergeTolerance   1e-4;
+
+// ************************************************************************* //
