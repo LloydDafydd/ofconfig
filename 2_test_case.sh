@@ -128,6 +128,34 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Verify decomposition created processor directories and that each has the 0/ files
+echo "Verifying decomposition and presence of 0/ files in processor directories..."
+NUM_PROCS=${SLURM_NTASKS:-1}
+MISSING_PROC=0
+for ((i=0;i<NUM_PROCS;i++)); do
+    PDIR="processor${i}"
+    if [ ! -d "$PDIR/0" ]; then
+        echo "ERROR: Expected directory $PDIR/0 does not exist"
+        MISSING_PROC=1
+    else
+        # If specific runtime fields (e.g. omega) are missing, copy the main 0/ files as a fallback
+        if [ ! -f "$PDIR/0/omega" ]; then
+            echo "Notice: $PDIR/0/omega missing — copying 0/* -> $PDIR/0/"
+            cp -r 0/* "$PDIR/0/" || {
+                echo "ERROR: Failed to copy 0/* to $PDIR/0/"
+                exit 1
+            }
+        fi
+    fi
+done
+
+if [ "$MISSING_PROC" -ne 0 ]; then
+    echo "ERROR: One or more processor directories are missing; check log.decomposePar"
+    ls -l processor* || true
+    tail -n 80 log.decomposePar || true
+    exit 1
+fi
+
 # Run simulation
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
