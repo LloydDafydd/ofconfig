@@ -99,10 +99,6 @@ method          scotch;
 
 distributed     no;
 
-roots
-(
-)
-
 EOF
 
 echo "Decomposing domain for $NPROCS subdomains..."
