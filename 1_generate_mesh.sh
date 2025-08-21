@@ -60,8 +60,32 @@ echo "✓ Background mesh: $INITIAL_CELLS cells"
 # Generate high-quality mesh
 echo "Step 3: Generating VERY HIGH-RESOLUTION surface mesh..."
 echo "This will take 2-4 hours for ultra-high-quality mesh (levels 8-9)..."
-snappyHexMesh -overwrite > log.snappyHexMesh 2>&1
-check_error "snappyHexMesh"
+
+# Determine number of MPI ranks to use
+if [ -n "$SLURM_NTASKS" ]; then
+    NPROCS=$SLURM_NTASKS
+elif [ -n "$SLURM_NTASKS_PER_NODE" ] && [ -n "$SLURM_JOB_NUM_NODES" ]; then
+    NPROCS=$(( SLURM_NTASKS_PER_NODE * SLURM_JOB_NUM_NODES ))
+else
+    NPROCS=${SLURM_NTASKS_PER_NODE:-24}
+fi
+
+echo "Running snappyHexMesh with $NPROCS MPI ranks"
+
+# Prefer mpirun, fall back to srun if available
+if command -v mpirun >/dev/null 2>&1; then
+    mpirun -np $NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
+    RC=$?
+elif command -v srun >/dev/null 2>&1; then
+    srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
+    RC=$?
+else
+    echo "WARNING: MPI launcher not found; running snappyHexMesh serially"
+    snappyHexMesh -overwrite > log.snappyHexMesh 2>&1
+    RC=$?
+fi
+
+check_error "snappyHexMesh (exit code $RC)"
 
 # Get final mesh statistics
 FINAL_CELLS=$(foamDictionary constant/polyMesh/owner -entry nEntries -value 2>/dev/null)
