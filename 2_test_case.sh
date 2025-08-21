@@ -132,7 +132,7 @@ fi
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
 
-mpirun --overload-allowed -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
+mpirun -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Simulation failed"
