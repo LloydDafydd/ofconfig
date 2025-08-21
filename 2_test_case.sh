@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G
 #SBATCH --time=1-00:00:00
-#SBATCH --partition=grace*
+#SBATCH --partition=grace
 #SBATCH --output=test_case_%j.out
 #SBATCH --error=test_case_%j.err
 
@@ -31,7 +31,7 @@ echo "=========================================="
 
 # Load OpenFOAM environment
 module purge
-module load openmpi/5.0.3-et6p openfoam/2312-w7xd
+module load openmpi/5.0.8/5.0.8
 
 # Create working directory
 WORK_DIR="test_case_v85_s2000"
@@ -39,12 +39,12 @@ mkdir -p $WORK_DIR
 cd $WORK_DIR
 
 # Copy base case
-cp -r /user/work/qi22305/OpenFOAM/2cluster2foam/openfoam_case/* .
+cp -r /$HOME/Isambaseball/openfoam_case/* .
 
 # Install pre-generated mesh
-if [ -f "/user/work/qi22305/OpenFOAM/2cluster2foam/master_mesh.tar.gz" ]; then
+if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
-    tar -xzf /user/work/qi22305/OpenFOAM/2cluster2foam/master_mesh.tar.gz
+    tar -xzf /$HOME/Isambaseball/master_mesh.tar.gz
     cp -r master_mesh/* constant/
     rm -rf master_mesh
     echo "✓ Mesh installed"
