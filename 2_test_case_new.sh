@@ -46,10 +46,16 @@ echo "Fixing forceCoeffs configuration..."
 sed -i '/lRef.*0.0732;/a\        pitchAxis       (0 1 0);        // Pitch axis (y-axis for baseball rotation)' system/controlDict
 
 # Fix patch specification in force functions to handle parallel decomposition
-sed -i 's/patches.*baseball.*/patches         ("baseball.*");      \/\/ Surface patches including parallel boundaries/' system/controlDict
+# Use exact patch name instead of wildcard pattern
+sed -i 's/patches.*baseball.*/patches         (baseball);      \/\/ Surface patch/' system/controlDict
 
-# Fix library specification in fieldAverage function (needs quotes around library names)
-sed -i 's/libs.*fieldFunctionObjects.*/libs            ("fieldFunctionObjects"); \/\/ Required library/' system/controlDict
+# Disable fieldAverage function object if not available in this OpenFOAM version
+echo "Disabling fieldAverage function object (not available in this OpenFOAM installation)..."
+sed -i '/fieldAverage/,/^[[:space:]]*}/s/^/\/\/ /' system/controlDict
+
+# Clean up any malformed dictionary entries that may have been created
+echo "Cleaning up controlDict syntax..."
+sed -i '/^[[:space:]]*\/\/ .*{[[:space:]]*$/,/^[[:space:]]*\/\/ }[[:space:]]*$/d' system/controlDict
 
 # Install pre-generated mesh
 if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
@@ -148,6 +154,22 @@ if [ $? -ne 0 ]; then
     tail -50 log.redistributePar
     exit 1
 fi
+
+# Check available patches and fix patch names in force functions
+echo "Checking available patches and fixing force function configuration..."
+PATCH_LIST=$(grep -A 20 "boundaryField" processor0/constant/polyMesh/boundary | grep -o "^[[:space:]]*[a-zA-Z][a-zA-Z0-9_]*" | sed 's/^[[:space:]]*//' | grep -v "type\|nFaces\|startFace" | head -10)
+echo "Available patches: $PATCH_LIST"
+
+# Find the actual baseball patch name (may be different in parallel mesh)
+BASEBALL_PATCH=$(echo "$PATCH_LIST" | grep -i "baseball\|wall" | head -1)
+if [ -z "$BASEBALL_PATCH" ]; then
+    echo "Warning: No baseball patch found, using 'wall' as fallback"
+    BASEBALL_PATCH="wall"
+fi
+echo "Using patch: $BASEBALL_PATCH"
+
+# Update controlDict with correct patch name
+sed -i "s/patches.*baseball.*/patches         ($BASEBALL_PATCH);      \/\/ Baseball surface patch/" system/controlDict
 
 # Run simulation
 echo "Starting CFD simulation..."
