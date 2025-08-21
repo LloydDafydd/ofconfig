@@ -48,6 +48,13 @@ sed -i '/lRef.*0.0732;/a\        pitchAxis       (0 1 0);        // Pitch axis (
 # Fix patch specification in force functions to handle parallel decomposition
 sed -i 's/patches.*baseball.*/patches         ("baseball.*");      \/\/ Surface patches including parallel boundaries/' system/controlDict
 
+# Fix library specification in fieldAverage function (needs quotes around library names)
+sed -i 's/libs.*fieldFunctionObjects.*/libs            ("fieldFunctionObjects"); \/\/ Required library/' system/controlDict
+
+# Disable fieldAverage function object if not available in this OpenFOAM version
+echo "Disabling fieldAverage function object (not available in this OpenFOAM installation)..."
+sed -i '/fieldAverage/,/^[[:space:]]*}/s/^/\/\/ /' system/controlDict
+
 # Install pre-generated mesh
 if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
