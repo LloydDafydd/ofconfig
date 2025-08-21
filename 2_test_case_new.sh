@@ -41,6 +41,16 @@ cd $WORK_DIR
 # Copy base case
 cp -r /$HOME/Isambaseball/openfoam_case/* .
 
+# Fix forceCoeffs function definition to add missing pitchAxis parameter
+echo "Fixing forceCoeffs configuration..."
+sed -i '/lRef.*0.0732;/a\        pitchAxis       (0 1 0);        // Pitch axis (y-axis for baseball rotation)' system/controlDict
+
+# Fix patch specification in force functions to handle parallel decomposition
+sed -i 's/patches.*baseball.*/patches         ("baseball.*");      \/\/ Surface patches including parallel boundaries/' system/controlDict
+
+# Fix library specification in fieldAverage function (needs quotes around library names)
+sed -i 's/libs.*fieldFunctionObjects.*/libs            ("fieldFunctionObjects"); \/\/ Required library/' system/controlDict
+
 # Install pre-generated mesh
 if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
