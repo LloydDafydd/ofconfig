@@ -75,9 +75,34 @@ echo "Running snappyHexMesh with $NPROCS MPI ranks"
 # Prefer mpirun, fall back to srun if available
 # Prepare domain decomposition for parallel snappyHexMesh
 echo "Writing system/decomposeParDict with numberOfSubdomains $NPROCS"
-cat > system/decomposeParDict << EOF
+cat > system/decomposeParDict << 'EOF'
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \    /   O peration     | Version:  2312                                  |
+|   \  /    A nd           |                                                 |
+|    \/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      decomposeParDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
 numberOfSubdomains $NPROCS;
+
 method          scotch;
+
+distributed     no;
+
+roots
+(
+)
+
 EOF
 
 echo "Decomposing domain for $NPROCS subdomains..."
