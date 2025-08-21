@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G
 #SBATCH --time=1-00:00:00
-#SBATCH --partition=milan
+#SBATCH --partition=grace*
 #SBATCH --output=test_case_%j.out
 #SBATCH --error=test_case_%j.err
 
