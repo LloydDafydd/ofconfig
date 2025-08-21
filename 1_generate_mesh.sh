@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=baseball_mesh_hires
-#SBATCH --partition=milan
+#SBATCH --partition=grace
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=24
 #SBATCH --cpus-per-task=1
@@ -23,7 +23,7 @@ echo "=========================================="
 
 # Load OpenFOAM environment
 module purge
-module load openmpi/5.0.3-et6p openfoam/2312-w7xd
+module load openmpi/5.0.8/5.0.8
 
 # Create mesh directory
 MESH_DIR="mesh_generation"
@@ -35,12 +35,12 @@ cp -r ../openfoam_case/* .
 
 # Generate scaled baseball STL
 echo "Step 1: Generating scaled baseball STL..."
-cd /user/work/qi22305/OpenFOAM/2cluster2foam
+cd /$HOME/Isambaseball
 cd $MESH_DIR
 
 # Copy scaled STL
 mkdir -p constant/triSurface
-cp /user/work/qi22305/OpenFOAM/2cluster2foam/baseball.stl constant/triSurface/
+cp /$HOME/Isambaseball/baseball.stl constant/triSurface/
 
 # Generate background mesh
 echo "Step 2: Generating background mesh..."
@@ -77,7 +77,7 @@ fi
 
 # Create clean mesh directory
 echo "Step 5: Creating mesh archive..."
-cd /user/work/qi22305/OpenFOAM/2cluster2foam
+cd /$HOME/Isambaseball
 mkdir -p master_mesh
 cp -r $MESH_DIR/constant/polyMesh master_mesh/
 cp -r $MESH_DIR/constant/extendedFeatureEdgeMesh master_mesh/ 2>/dev/null || echo "No extended features"
