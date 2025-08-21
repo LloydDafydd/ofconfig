@@ -73,6 +73,17 @@ fi
 echo "Running snappyHexMesh with $NPROCS MPI ranks"
 
 # Prefer mpirun, fall back to srun if available
+# Prepare domain decomposition for parallel snappyHexMesh
+echo "Writing system/decomposeParDict with numberOfSubdomains $NPROCS"
+cat > system/decomposeParDict << EOF
+numberOfSubdomains $NPROCS;
+method          scotch;
+EOF
+
+echo "Decomposing domain for $NPROCS subdomains..."
+decomposePar > log.decomposePar 2>&1
+check_error "decomposePar"
+
 if command -v mpirun >/dev/null 2>&1; then
     mpirun -np $NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
     RC=$?
