@@ -199,6 +199,40 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Verify omega exists in each processor directory; if not, fall back to copying
+MISSING=0
+for pd in processor*/; do
+    if [ -d "$pd" ]; then
+        if [ ! -f "${pd}0/omega" ]; then
+            echo "Warning: ${pd}0/omega missing — will copy fallback omega"
+            MISSING=1
+        fi
+    fi
+done
+
+if [ $MISSING -eq 1 ]; then
+    echo "Attempting fallback: copy 0/omega into processor*/0/"
+    for pd in processor*/; do
+        if [ -d "$pd" ]; then
+            mkdir -p "${pd}0"
+            cp -f 0/omega "${pd}0/omega" && echo "Copied omega -> ${pd}0/omega" || echo "Failed to copy omega to ${pd}0/omega"
+        fi
+    done
+    # Re-check
+    STILL_MISSING=0
+    for pd in processor*/; do
+        if [ -d "$pd" ] && [ ! -f "${pd}0/omega" ]; then
+            STILL_MISSING=1
+            echo "ERROR: ${pd}0/omega still missing after fallback"
+        fi
+    done
+    if [ $STILL_MISSING -eq 1 ]; then
+        echo "ERROR: Unable to ensure omega in all processor directories. See log.redistributePar for details." 
+        tail -200 log.redistributePar || true
+        exit 1
+    fi
+fi
+
 # Run simulation using modern OpenFOAM syntax
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
