@@ -36,7 +36,9 @@ fi
 # Parameters
 VELOCITY=38.0
 SPIN_RATE=2000
-OMEGA=$(echo "scale=6; $SPIN_RATE * 2 * 3.14159 / 60" | bc)
+# compute omega with bc -l and format to fixed 6 decimals to avoid unexpected tokens
+OMEGA=$(echo "$SPIN_RATE * 2 * 3.14159 / 60" | bc -l)
+OMEGA=$(printf '%.6f' "$OMEGA")
 
 # Update simple U and magUInf if present
 if [ -f 0/U ]; then
@@ -106,6 +108,11 @@ if [ ! -f constant/polyMesh/boundary ]; then
 fi
 
 # decompose
+# show the generated 0/omega for debugging (before decomposition)
+echo "--- generated 0/omega ---"
+sed -n '1,40p' 0/omega || true
+echo "------------------------"
+
 decomposePar > log.decomposePar 2>&1
 
 # redistribute (ensure fields are placed in processor directories)
