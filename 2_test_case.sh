@@ -136,6 +136,12 @@ if command -v dos2unix > /dev/null 2>&1; then
 else
     sed -i 's/\r$//' 0/omega || true
 fi
+# Ensure unix line endings for omegaVec (prevent FOAM header parse errors from CRLF)
+if command -v dos2unix > /dev/null 2>&1; then
+    dos2unix 0/omegaVec || true
+else
+    sed -i 's/\r$//' 0/omegaVec || true
+fi
 
 # Check if baseball patch exists in the mesh
 echo "Checking mesh patches..."
@@ -205,6 +211,7 @@ fi
 
 # Distribute omega field to processor directories
 echo "Distributing omega field to processor directories..."
+echo "Distributing angular velocity field (0/omegaVec) to processor directories..."
 redistributePar -overwrite > log.redistributePar 2>&1
 
 if [ $? -ne 0 ]; then
@@ -213,12 +220,61 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Force-copy the authoritative omega file into each processor directory to avoid
+# inconsistent classes or formats produced by redistribution. Choose 0/omega if
+# it exists (preserve original), otherwise use 0/omegaVec created above.
+if [ -f 0/omega ]; then
+    SRC_FIELD="0/omega"
+    FIELD_NAME="omega"
+elif [ -f 0/omegaVec ]; then
+    SRC_FIELD="0/omegaVec"
+    FIELD_NAME="omegaVec"
+else
+    echo "ERROR: No source omega field found (neither 0/omega nor 0/omegaVec)"
+    exit 1
+fi
+
+echo "Ensuring ${SRC_FIELD} copied into each processor/*/0/${FIELD_NAME} (preserving binary/ascii as-is)"
+for pd in processor*/; do
+    if [ -d "$pd" ]; then
+        mkdir -p "${pd}0"
+        if cp -f "$SRC_FIELD" "${pd}0/${FIELD_NAME}"; then
+            echo "Copied ${SRC_FIELD} -> ${pd}0/${FIELD_NAME}"
+        else
+            echo "ERROR: Failed to copy ${SRC_FIELD} -> ${pd}0/${FIELD_NAME}"
+        fi
+    fi
+done
+
+# Validate processor files: check they contain FoamFile and the expected object/class
+BAD=0
+for pd in processor*/; do
+    if [ -d "$pd" ]; then
+        PF="${pd}0/${FIELD_NAME}"
+        if [ ! -f "$PF" ]; then
+            echo "ERROR: Missing ${PF} after copy"
+            BAD=1
+            continue
+        fi
+        # Basic checks: FoamFile present, object name, and class line
+        if ! grep -q "FoamFile" "$PF" || ! grep -q "object[[:space:]]*${FIELD_NAME}" "$PF" || ! grep -q "class[[:space:]]*volVectorField" "$PF"; then
+            echo "ERROR: ${PF} failed basic FoamFile checks (class/object mismatch). Showing head:"
+            head -n 40 "$PF" || true
+            BAD=1
+        fi
+    fi
+done
+if [ $BAD -eq 1 ]; then
+    echo "ERROR: One or more processor field files failed validation. Aborting to avoid FOAM parallel read errors."
+    exit 1
+fi
+
 # Verify omega exists in each processor directory; if not, fall back to copying
 MISSING=0
 for pd in processor*/; do
     if [ -d "$pd" ]; then
-        if [ ! -f "${pd}0/omega" ]; then
-            echo "Warning: ${pd}0/omega missing — will copy fallback omega"
+        if [ ! -f "${pd}0/omegaVec" ]; then
+            echo "Warning: ${pd}0/omegaVec missing — will copy fallback omegaVec"
             MISSING=1
         fi
     fi
@@ -229,16 +285,16 @@ if [ $MISSING -eq 1 ]; then
     for pd in processor*/; do
         if [ -d "$pd" ]; then
             mkdir -p "${pd}0"
-            if cp -f 0/omega "${pd}0/omega"; then
+            if cp -f 0/omegaVec "${pd}0/omegaVec"; then
                 # normalize line endings on the copied file too
                 if command -v dos2unix > /dev/null 2>&1; then
-                    dos2unix "${pd}0/omega" >/dev/null 2>&1 || true
+                    dos2unix "${pd}0/omegaVec" >/dev/null 2>&1 || true
                 else
-                    sed -i 's/\r$//' "${pd}0/omega" || true
+                    sed -i 's/\r$//' "${pd}0/omegaVec" || true
                 fi
-                echo "Copied omega -> ${pd}0/omega"
+                echo "Copied omegaVec -> ${pd}0/omegaVec"
             else
-                echo "Failed to copy omega to ${pd}0/omega"
+                echo "Failed to copy omegaVec to ${pd}0/omegaVec"
             fi
         fi
     done
@@ -247,7 +303,7 @@ if [ $MISSING -eq 1 ]; then
     for pd in processor*/; do
         if [ -d "$pd" ] && [ ! -f "${pd}0/omega" ]; then
             STILL_MISSING=1
-            echo "ERROR: ${pd}0/omega still missing after fallback"
+            echo "ERROR: ${pd}0/omegaVec still missing after fallback"
         fi
     done
     if [ $STILL_MISSING -eq 1 ]; then
@@ -262,6 +318,14 @@ if [ -f processor0/0/omega ]; then
     echo "--- preview processor0/0/omega (first 60 lines) ---"
     head -n 60 processor0/0/omega || true
     echo "-----------------------------------------------"
+fi
+# Show a quick preview of omegaVec in processor0 for debugging
+if [ -f processor0/0/omegaVec ]; then
+    echo "--- preview processor0/0/omegaVec (first 60 lines) ---"
+    head -n 60 processor0/0/omegaVec || true
+    echo "-----------------------------------------------"
+else
+    echo "Note: processor0/0/omegaVec not present for preview"
 fi
 
 # Run simulation using modern OpenFOAM syntax
