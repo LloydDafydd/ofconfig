@@ -95,6 +95,70 @@ echo "Running snappyHexMesh with $NPROCS MPI ranks"
 # Set DIAG_SNAPPY=1 when submitting the job to enable this (default is 0).
 DIAG_SNAPPY=${DIAG_SNAPPY:-0}
 
+# Run feature extraction to produce an .eMesh if possible. If produced,
+# enable explicit feature snapping by using a runtime copy of the dict.
+echo "Attempting feature extraction to create .eMesh for explicit feature snapping (if possible)"
+# Create a minimal surfaceFeaturesDict if one does not exist so the modern surfaceFeatures utility can run.
+if [ ! -f system/surfaceFeaturesDict ]; then
+    cat > system/surfaceFeaturesDict <<'EOF'
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                   |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2312                                  |
+|   \\  /    A nd           |                                                   |
+|    \\/     M anipulation  |                                                   |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      surfaceFeaturesDict;
+}
+
+// Minimal surfaceFeaturesDict for baseball_wrapped.stl
+
+geometry
+{
+    "constant/triSurface/baseball_wrapped.stl"
+    {
+        type triSurfaceMesh;
+        name baseball;
+    }
+}
+
+features
+(
+    {
+        file "baseball.eMesh";
+        level 4;
+    }
+);
+
+mergeTolerance 1e-6;
+
+EOF
+fi
+
+# Prefer the modern utility if available
+if command -v surfaceFeatures >/dev/null 2>&1; then
+    echo "Running surfaceFeatures -> log.surfaceFeatureExtract"
+    surfaceFeatures > log.surfaceFeatureExtract 2>&1 || true
+elif command -v surfaceFeatureExtract >/dev/null 2>&1; then
+    echo "Running legacy surfaceFeatureExtract -> log.surfaceFeatureExtract"
+    surfaceFeatureExtract > log.surfaceFeatureExtract 2>&1 || true
+else
+    echo "No surface features utility found; continuing with implicit feature detection" > log.surfaceFeatureExtract
+fi
+SNAPPY_DICT=system/snappyHexMeshDict
+if [ -f constant/triSurface/baseball.eMesh ]; then
+    echo "Found constant/triSurface/baseball.eMesh — enabling explicitFeatureSnap via a runtime dict"
+    cp system/snappyHexMeshDict system/snappyHexMeshDict.useEMesh || true
+    sed -i 's/implicitFeatureSnap true/implicitFeatureSnap false/' system/snappyHexMeshDict.useEMesh || true
+    sed -i 's/explicitFeatureSnap false/explicitFeatureSnap true/' system/snappyHexMeshDict.useEMesh || true
+    SNAPPY_DICT=system/snappyHexMeshDict.useEMesh
+fi
+
 # Prefer mpirun, fall back to srun if available
 # Prepare domain decomposition for parallel snappyHexMesh
 echo "Writing system/decomposeParDict with numberOfSubdomains $NPROCS"
@@ -129,26 +193,26 @@ decomposePar > log.decomposePar 2>&1
 check_error "decomposePar"
 
 if command -v mpirun >/dev/null 2>&1; then
-    if [ "$DIAG_SNAPPY" = "1" ]; then
+        if [ "$DIAG_SNAPPY" = "1" ]; then
         echo "Running diagnostic snappyHexMesh (addLayers=false) as DIAG_SNAPPY=1"
-        cp system/snappyHexMeshDict system/snappyHexMeshDict.noLayers || true
+        cp "$SNAPPY_DICT" system/snappyHexMeshDict.noLayers || true
         sed -i 's/addLayers[[:space:]]*true/addLayers false/' system/snappyHexMeshDict.noLayers || true
         mpirun -np $NPROCS snappyHexMesh -parallel -overwrite -dict system/snappyHexMeshDict.noLayers > log.snappyHexMesh.noLayers 2>&1
         echo "Diagnostic snappy log: log.snappyHexMesh.noLayers"
     fi
 
-    mpirun -np $NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
+    mpirun -np $NPROCS snappyHexMesh -parallel -overwrite -dict "$SNAPPY_DICT" > log.snappyHexMesh 2>&1
     RC=$?
 elif command -v srun >/dev/null 2>&1; then
-    if [ "$DIAG_SNAPPY" = "1" ]; then
+        if [ "$DIAG_SNAPPY" = "1" ]; then
         echo "Running diagnostic snappyHexMesh (addLayers=false) as DIAG_SNAPPY=1"
-        cp system/snappyHexMeshDict system/snappyHexMeshDict.noLayers || true
+        cp "$SNAPPY_DICT" system/snappyHexMeshDict.noLayers || true
         sed -i 's/addLayers[[:space:]]*true/addLayers false/' system/snappyHexMeshDict.noLayers || true
         srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite -dict system/snappyHexMeshDict.noLayers > log.snappyHexMesh.noLayers 2>&1
         echo "Diagnostic snappy log: log.snappyHexMesh.noLayers"
     fi
 
-    srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
+    srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite -dict "$SNAPPY_DICT" > log.snappyHexMesh 2>&1
     RC=$?
 else
     echo "WARNING: MPI launcher not found; running snappyHexMesh serially"
@@ -157,6 +221,24 @@ else
 fi
 
 check_error "snappyHexMesh (exit code $RC)"
+
+# If snappyHexMesh was run in parallel it writes processorN/ meshes.
+# Reconstruct the mesh to the top-level constant/polyMesh so packaging
+# and the boundary inspection see the merged mesh (which contains the
+# baseball patch). Run only when using more than 1 MPI rank.
+if [ "${NPROCS:-1}" -gt 1 ]; then
+    echo "Step 3b: Reconstructing parallel mesh to top-level constant/polyMesh..."
+    reconstructParMesh -constant > log.reconstructParMesh 2>&1
+    if [ $? -ne 0 ]; then
+        echo "ERROR: reconstructParMesh failed"
+        # produce diagnostics for debugging
+        create_debug_tarball
+        exit 1
+    fi
+    # remove processor directories left behind by the parallel run to avoid
+    # accidentally packaging per-processor data later
+    rm -rf processor* 2>/dev/null || true
+fi
 
 # Get final mesh statistics
 FINAL_CELLS=$(foamDictionary constant/polyMesh/owner -entry nEntries -value 2>/dev/null)
