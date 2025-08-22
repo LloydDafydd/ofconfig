@@ -34,7 +34,7 @@ geometry
     baseball
     {
         type triSurfaceMesh;
-        file "constant/triSurface/baseball.stl";
+        file "baseball.stl";
         name baseball;
     }
     
