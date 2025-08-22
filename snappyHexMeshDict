@@ -31,9 +31,10 @@ addLayers       true;
 // searchableSurface.
 geometry
 {
-    constant/triSurface/baseball.stl
+    baseball
     {
         type triSurfaceMesh;
+        file "constant/triSurface/baseball.stl";
         name baseball;
     }
     
