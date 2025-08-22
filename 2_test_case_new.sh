@@ -123,6 +123,13 @@ boundaryField
 }
 EOF
 
+# Ensure unix line endings for omega (prevent FOAM header parse errors from CRLF)
+if command -v dos2unix > /dev/null 2>&1; then
+    dos2unix 0/omega || true
+else
+    sed -i 's/\r$//' 0/omega || true
+fi
+
 # Check if baseball patch exists in the mesh
 echo "Checking mesh patches..."
 
@@ -148,11 +155,29 @@ for patch in $ACTUAL_PATCHES; do
 done
 
 if [ -z "$BASEBALL_PATCH" ]; then
-    echo "ERROR: No baseball/wall patch found in mesh!"
+    echo "ERROR: No baseball surface patch found in mesh!"
     echo "Available patches: $ACTUAL_PATCHES"
+    echo ""
+    echo "This indicates a fundamental mesh generation problem."
+    echo "The baseball surface should appear as a boundary patch."
+    echo ""
+    echo "DIAGNOSIS:"
+    echo "1. Check if mesh generation completed successfully"
+    echo "2. Verify baseball.stl was processed correctly"
+    echo "3. Check snappyHexMesh logs for errors"
     echo ""
     echo "Mesh boundary file contents:"
     cat constant/polyMesh/boundary
+    echo ""
+    echo "MESH STATISTICS:"
+    echo "Total cells: $(grep -c '^[0-9]' constant/polyMesh/owner 2>/dev/null || echo 'unknown')"
+    echo "Total faces: $(wc -l < constant/polyMesh/faces 2>/dev/null || echo 'unknown')"
+    echo "Total points: $(wc -l < constant/polyMesh/points 2>/dev/null || echo 'unknown')"
+    echo ""
+    echo "POSSIBLE SOLUTIONS:"
+    echo "1. Re-run mesh generation with: ./1_generate_mesh.sh"
+    echo "2. Check master_mesh directory for correct files"
+    echo "3. Verify baseball.stl geometry is valid"
     exit 1
 fi
 
@@ -181,22 +206,84 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Verify omega exists in each processor directory; if not, fall back to copying
+MISSING=0
+for pd in processor*/; do
+    if [ -d "$pd" ]; then
+        if [ ! -f "${pd}0/omega" ]; then
+            echo "Warning: ${pd}0/omega missing — will copy fallback omega"
+            MISSING=1
+        fi
+    fi
+done
+
+if [ $MISSING -eq 1 ]; then
+    echo "Attempting fallback: copy 0/omega into processor*/0/"
+    for pd in processor*/; do
+        if [ -d "$pd" ]; then
+            mkdir -p "${pd}0"
+            if cp -f 0/omega "${pd}0/omega"; then
+                # normalize line endings on the copied file too
+                if command -v dos2unix > /dev/null 2>&1; then
+                    dos2unix "${pd}0/omega" >/dev/null 2>&1 || true
+                else
+                    sed -i 's/\r$//' "${pd}0/omega" || true
+                fi
+                echo "Copied omega -> ${pd}0/omega"
+            else
+                echo "Failed to copy omega to ${pd}0/omega"
+            fi
+        fi
+    done
+    # Re-check
+    STILL_MISSING=0
+    for pd in processor*/; do
+        if [ -d "$pd" ] && [ ! -f "${pd}0/omega" ]; then
+            STILL_MISSING=1
+            echo "ERROR: ${pd}0/omega still missing after fallback"
+        fi
+    done
+    if [ $STILL_MISSING -eq 1 ]; then
+        echo "ERROR: Unable to ensure omega in all processor directories. See log.redistributePar for details." 
+        tail -200 log.redistributePar || true
+        exit 1
+    fi
+fi
+
+# Show a quick preview of omega in processor0 for debugging
+if [ -f processor0/0/omega ]; then
+    echo "--- preview processor0/0/omega (first 60 lines) ---"
+    head -n 60 processor0/0/omega || true
+    echo "-----------------------------------------------"
+fi
+
 # Run simulation using modern OpenFOAM syntax
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
 
-# Use srun if available (Slurm native), otherwise mpirun
+## Try running with srun first (preferred on Slurm). If srun fails or aborts,
+## retry with mpirun and preserve logs for diagnostics.
+LAUNCH_RC=0
 if command -v srun > /dev/null 2>&1; then
     echo "Launching with srun (Slurm) on $SLURM_NTASKS tasks..."
-    srun --ntasks=$SLURM_NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun 2>&1
+    srun --ntasks=$SLURM_NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.srun 2>&1 || LAUNCH_RC=$?
+    if [ $LAUNCH_RC -ne 0 ]; then
+        echo "srun launch failed with exit code $LAUNCH_RC. Capturing tail of srun log..."
+        tail -200 log.foamRun.srun || true
+        echo "Retrying with mpirun..."
+        mpirun -np $SLURM_NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.mpirun 2>&1 || LAUNCH_RC=$?
+    fi
 else
-    echo "Launching with mpirun on $SLURM_NTASKS ranks..."
-    mpirun -np $SLURM_NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun 2>&1
+    echo "srun not available; launching with mpirun on $SLURM_NTASKS ranks..."
+    mpirun -np $SLURM_NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.mpirun 2>&1 || LAUNCH_RC=$?
 fi
 
-if [ $? -ne 0 ]; then
-    echo "ERROR: Simulation failed"
-    tail -50 log.foamRun
+if [ $LAUNCH_RC -ne 0 ]; then
+    echo "ERROR: Simulation launcher failed (exit code $LAUNCH_RC)"
+    echo "--- tail of srun log (if present) ---"
+    tail -200 log.foamRun.srun 2>/dev/null || echo "No srun log"
+    echo "--- tail of mpirun log (if present) ---"
+    tail -200 log.foamRun.mpirun 2>/dev/null || echo "No mpirun log"
     exit 1
 fi
 
