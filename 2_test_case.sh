@@ -1,159 +1,202 @@
 #!/bin/bash
 
-#SBATCH --job-name=baseball_minimal
+#SBATCH --job-name=baseball_test
+#SBATCH --partition=grace
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=24
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G
 #SBATCH --time=1-00:00:00
-#SBATCH --partition=grace
-#SBATCH --output=test_case_minimal_%j.out
-#SBATCH --error=test_case_minimal_%j.err
+#SBATCH --output=test_case_%j.out
+#SBATCH --error=test_case_%j.err
 
-# Minimal OpenFOAM parallel run script
-# - Writes a canonical ASCII volVectorField 0/omega
-# - Runs decomposePar, redistributePar -overwrite
-# - Launches the parallel solver via srun (falls back to mpirun)
-# This intentionally avoids defensive workarounds; it assumes the case and
-# cluster are configured correctly for OpenFOAM parallel runs.
+# ============================================================================
+# BASEBALL TEST CASE - VALIDATION SIMULATION
+# ============================================================================
+# Test parameters: 85 mph, 2000 RPM, 0° seam, 0° spin angle
+# Should produce near-zero average horizontal force for validation
+# ============================================================================
 
-set -euo pipefail
+echo "=========================================="
+echo "BASEBALL CFD - TEST CASE SIMULATION"
+echo "=========================================="
+echo "Test conditions:"
+echo "  Velocity: 85 mph (38.0 m/s)"
+echo "  Spin rate: 2000 RPM"
+echo "  Seam orientation: 0°"
+echo "  Spin angle: 0°"
+echo "  Expected: Near-zero lateral force"
+echo "Started: $(date)"
+echo "=========================================="
 
-WORK_DIR="test_case_v85_s2000_minimal"
-mkdir -p "$WORK_DIR"
-cd "$WORK_DIR"
+# Load OpenFOAM environment
+module purge
+module load openmpi/5.0.8/5.0.8
 
-# copy base case
-cp -r /$HOME/Isambaseball/openfoam_case/* .
+# Create working directory
+WORK_DIR="test_case_v85_s2000"
+mkdir -p $WORK_DIR
+cd $WORK_DIR
 
-# install mesh if provided
-if [ -f "/$HOME/Isambaseball/master_mesh.tar.gz" ]; then
-    tar -xzf /$HOME/Isambaseball/master_mesh.tar.gz
+# Copy base case
+cp -r $HOME/Isambaseball/openfoam_case/* .
+
+# Install pre-generated mesh
+if [ -f "$HOME/Isambaseball/master_mesh.tar.gz" ]; then
+    echo "Installing pre-generated mesh..."
+    tar -xzf $HOME/Isambaseball/master_mesh.tar.gz
     cp -r master_mesh/* constant/
     rm -rf master_mesh
+    echo "✓ Mesh installed"
+else
+    echo "ERROR: Master mesh not found! Run mesh generation first."
+    exit 1
 fi
 
-# Parameters
-VELOCITY=38.0
-SPIN_RATE=2000
-# compute omega with bc -l and format to fixed 6 decimals to avoid unexpected tokens
-OMEGA=$(echo "$SPIN_RATE * 2 * 3.14159 / 60" | bc -l)
-OMEGA=$(printf '%.6f' "$OMEGA")
+# Configure test parameters
+VELOCITY=38.0      # 85 mph in m/s
+SPIN_RATE=2000     # RPM
+SEAM_ANGLE=0       # degrees
+SPIN_AXIS_ANGLE=0  # degrees (pure backspin/topspin)
 
-# Update simple U and magUInf if present
-if [ -f 0/U ]; then
-    sed -i "s/uniform (38.0 0 0)/uniform ($VELOCITY 0 0)/" 0/U || true
-fi
-if [ -f system/controlDict ]; then
-    sed -i "s/magUInf.*38.0;/magUInf         $VELOCITY;/" system/controlDict || true
-fi
+# Calculate spin rate in rad/s
+OMEGA=$(echo "scale=6; $SPIN_RATE * 2 * 3.14159 / 60" | bc)
 
-# Write canonical ASCII volScalarField 0/omega (turbulence field)
-mkdir -p 0
-cat > 0/omega <<EOF
-/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  1.0                                   |
-|   \\  /    A nd           | Website:  https://openfoam.org                  |
-|    \/     M anipulation  |                                                 |
-\\*---------------------------------------------------------------------------*/
+echo "Configuring boundary conditions..."
+echo "  Velocity: $VELOCITY m/s"
+echo "  Angular velocity: $OMEGA rad/s"
+
+# Update velocity in boundary conditions
+sed -i "s/uniform (38.0 0 0)/uniform ($VELOCITY 0 0)/" 0/U
+
+# Update rotational velocity for spinning baseball
+cat > 0/omega << EOF
+/*--------------------------------*- C++ -*----------------------------------*\
 FoamFile
 {
-    version     2.0;
     format      ascii;
-    class       volScalarField;
+    class       volVectorField;
     object      omega;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 0 -1 0 0 0 0];
 
-// scalar omega used by turbulence models
-internalField   uniform $OMEGA;
+internalField   uniform (0 $OMEGA 0);  // Pure backspin
 
 boundaryField
 {
-    inlet { type fixedValue; value uniform $OMEGA; }
-    outlet { type zeroGradient; }
-    sides { type zeroGradient; }
-    top { type zeroGradient; }
-    bottom { type zeroGradient; }
     baseball
     {
-        type            omegaWallFunction;
-        value           uniform $OMEGA;
+        type            fixedValue;
+        value           uniform (0 $OMEGA 0);
+    }
+    
+    inlet
+    {
+        type            zeroGradient;
+    }
+    
+    outlet  
+    {
+        type            zeroGradient;
+    }
+    
+    sides
+    {
+        type            zeroGradient;
+    }
+    
+    top
+    {
+        type            zeroGradient;
+    }
+    
+    bottom
+    {
+        type            zeroGradient;
     }
 }
-
 EOF
 
-# Also update the rotatingWallVelocity omega in 0/U so the boundary matches the requested spin
-if [ -f 0/U ]; then
-    # Replace a numeric omega value inside the U file (keeps formatting/comments)
-    sed -i -E "s/(^\s*omega\s+)[0-9]+(\.[0-9]+)?;/\1$OMEGA;/" 0/U || true
-fi
-
-# Ensure ascii line endings
-if command -v dos2unix >/dev/null 2>&1; then
-    dos2unix 0/omega || true
-else
-    sed -i 's/\r$//' 0/omega || true
-fi
-
-# Basic mesh check
-if [ ! -f constant/polyMesh/boundary ]; then
-    echo "ERROR: Mesh constant/polyMesh/boundary not found. Aborting."
-    exit 1
-fi
-
-# decompose
-# show the generated 0/omega for debugging (before decomposition)
-echo "--- generated 0/omega ---"
-sed -n '1,40p' 0/omega || true
-echo "------------------------"
-
+# Domain decomposition for parallel execution
+echo "Decomposing domain for $SLURM_NTASKS cores..."
 decomposePar > log.decomposePar 2>&1
 
-# redistribute (ensure fields are placed in processor directories)
-redistributePar -overwrite > log.redistributePar 2>&1
-
-# show a short preview
-echo "--- preview processor0/0/omega (if present) ---"
-if [ -f processor0/0/omega ]; then
-    head -n 40 processor0/0/omega || true
-else
-    echo "processor0/0/omega not present after redistributePar"
-fi
-echo "-----------------------------------------------"
-
-# Launch parallel solver (use srun if available)
-NTASKS=${SLURM_NTASKS:-24}
-LAUNCH_RC=0
-if command -v srun >/dev/null 2>&1; then
-    echo "Launching with srun on $NTASKS tasks..."
-    srun --ntasks=$NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.srun 2>&1 || LAUNCH_RC=$?
-    if [ $LAUNCH_RC -ne 0 ]; then
-        echo "srun launch failed (code $LAUNCH_RC); falling back to mpirun"
-        mpirun -np $NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.mpirun 2>&1 || LAUNCH_RC=$?
-    fi
-else
-    echo "srun not found; launching with mpirun on $NTASKS ranks..."
-    mpirun -np $NTASKS foamRun -solver incompressibleFluid -parallel > log.foamRun.mpirun 2>&1 || LAUNCH_RC=$?
-fi
-
-if [ $LAUNCH_RC -ne 0 ]; then
-    echo "ERROR: Parallel solver failed (exit $LAUNCH_RC). Check log.foamRun.*"
-    tail -n 200 log.foamRun.srun 2>/dev/null || true
-    tail -n 200 log.foamRun.mpirun 2>/dev/null || true
+if [ $? -ne 0 ]; then
+    echo "ERROR: Domain decomposition failed"
     exit 1
 fi
 
-# reconstruct
+# Run simulation
+echo "Starting CFD simulation..."
+echo "This will take 2-4 hours..."
+
+mpirun --overload-allowed -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Simulation failed"
+    tail -50 log.pimpleFoam
+    exit 1
+fi
+
+# Reconstruct parallel results
+echo "Reconstructing results..."
 reconstructPar > log.reconstructPar 2>&1
 
-# post-process forces (attempt)
-foamPostProcess -func forces -latestTime > log.postProcess 2>&1 || true
-foamPostProcess -func forceCoeffs -latestTime >> log.postProcess 2>&1 || true
+# Extract force coefficients
+echo "Extracting force data..."
+grep -E "^[0-9]" postProcessing/forces/0/forceCoeffs.dat > forces_clean.dat 2>/dev/null || echo "Warning: Force coefficients not found"
 
-echo "Minimal parallel run script completed. Check logs and postProcessing for results." 
+# Calculate average forces
+if [ -f "forces_clean.dat" ]; then
+    echo "Calculating force statistics..."
+    
+    # Skip initial transient (first 0.1 seconds)
+    awk '$1 > 0.1 {print $2}' forces_clean.dat > cd_data.tmp
+    awk '$1 > 0.1 {print $3}' forces_clean.dat > cl_data.tmp
+    awk '$1 > 0.1 {print $4}' forces_clean.dat > cm_data.tmp
+    
+    # Calculate averages using awk
+    CD_AVG=$(awk '{sum+=$1; n++} END {if(n>0) print sum/n; else print "N/A"}' cd_data.tmp)
+    CL_AVG=$(awk '{sum+=$1; n++} END {if(n>0) print sum/n; else print "N/A"}' cl_data.tmp)
+    CM_AVG=$(awk '{sum+=$1; n++} END {if(n>0) print sum/n; else print "N/A"}' cm_data.tmp)
+    
+    # Calculate standard deviations
+    CD_STD=$(awk -v avg=$CD_AVG '{sum+=($1-avg)^2; n++} END {if(n>1) print sqrt(sum/(n-1)); else print "N/A"}' cd_data.tmp)
+    CL_STD=$(awk -v avg=$CL_AVG '{sum+=($1-avg)^2; n++} END {if(n>1) print sqrt(sum/(n-1)); else print "N/A"}' cl_data.tmp)
+    CM_STD=$(awk -v avg=$CM_AVG '{sum+=($1-avg)^2; n++} END {if(n>1) print sqrt(sum/(n-1)); else print "N/A"}' cm_data.tmp)
+    
+    rm -f *.tmp
+    
+    echo ""
+    echo "=========================================="
+    echo "FORCE COEFFICIENT ANALYSIS"
+    echo "=========================================="
+    echo "Average force coefficients (excluding 0.1s transient):"
+    echo "  Drag coefficient (Cd):    $CD_AVG ± $CD_STD"
+    echo "  Lift coefficient (Cl):    $CL_AVG ± $CL_STD"  
+    echo "  Moment coefficient (Cm):  $CM_AVG ± $CM_STD"
+    echo ""
+    
+    # Validation check
+    CL_ABS=$(echo "$CL_AVG" | awk '{print ($1<0)?-$1:$1}')
+    if awk "BEGIN {exit !($CL_ABS < 0.05)}"; then
+        echo "✓ VALIDATION PASSED: Lateral force is acceptably small"
+        echo "  |Cl| = $CL_ABS < 0.05 (expected for symmetric case)"
+    else
+        echo "⚠ VALIDATION WARNING: Lateral force higher than expected"
+        echo "  |Cl| = $CL_ABS >= 0.05 (check mesh quality and setup)"
+    fi
+else
+    echo "ERROR: Force data not found. Check simulation logs."
+fi
+
+echo ""
+echo "=========================================="
+echo "TEST CASE COMPLETE"
+echo "=========================================="
+echo "Completed: $(date)"
+echo "Check results in: $WORK_DIR"
+echo "Next step: Run parameter study if validation passed"
+echo "=========================================="
