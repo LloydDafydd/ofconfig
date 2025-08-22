@@ -46,7 +46,7 @@ if [ -f system/controlDict ]; then
     sed -i "s/magUInf.*38.0;/magUInf         $VELOCITY;/" system/controlDict || true
 fi
 
-# Write canonical ASCII volVectorField 0/omega
+# Write canonical ASCII volScalarField 0/omega (turbulence field)
 mkdir -p 0
 cat > 0/omega <<EOF
 /*--------------------------------*- C++ -*----------------------------------*\\
@@ -54,36 +54,43 @@ cat > 0/omega <<EOF
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\    /   O peration     | Version:  1.0                                   |
 |   \\  /    A nd           | Website:  https://openfoam.org                  |
-|    \\/     M anipulation  |                                                 |
+|    \/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
     version     2.0;
     format      ascii;
-    class       volVectorField;
+    class       volScalarField;
     object      omega;
 }
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform (0 $OMEGA 0);
+# scalar omega used by turbulence models
+internalField   uniform $OMEGA;
 
 boundaryField
 {
-    baseball
-    {
-        type            fixedValue;
-        value           uniform (0 $OMEGA 0);
-    }
-    inlet { type zeroGradient; }
+    inlet { type fixedValue; value uniform $OMEGA; }
     outlet { type zeroGradient; }
     sides { type zeroGradient; }
     top { type zeroGradient; }
     bottom { type zeroGradient; }
+    baseball
+    {
+        type            omegaWallFunction;
+        value           uniform $OMEGA;
+    }
 }
 
 EOF
+
+# Also update the rotatingWallVelocity omega in 0/U so the boundary matches the requested spin
+if [ -f 0/U ]; then
+    # Replace a numeric omega value inside the U file (keeps formatting/comments)
+    sed -i -E "s/(^\s*omega\s+)[0-9]+(\.[0-9]+)?;/\1$OMEGA;/" 0/U || true
+fi
 
 # Ensure ascii line endings
 if command -v dos2unix >/dev/null 2>&1; then
