@@ -124,14 +124,17 @@ FoamFile
     object      surfaceFeaturesDict;
 }
 
-// Minimal surfaceFeaturesDict for baseball_wrapped.stl
+// Minimal surfaceFeaturesDict for baseball_wrapped.stl (modern surfaceFeatures)
 
 geometry
 {
-    "constant/triSurface/baseball_wrapped.stl"
+    surfaces
     {
-        type triSurfaceMesh;
-        name baseball;
+        baseball
+        {
+            type triSurfaceMesh;
+            file "constant/triSurface/baseball_wrapped.stl";
+        }
     }
 }
 
