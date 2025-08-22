@@ -98,8 +98,16 @@ DIAG_SNAPPY=${DIAG_SNAPPY:-0}
 # Run feature extraction to produce an .eMesh if possible. If produced,
 # enable explicit feature snapping by using a runtime copy of the dict.
 echo "Attempting feature extraction to create .eMesh for explicit feature snapping (if possible)"
-# Create a minimal surfaceFeaturesDict if one does not exist so the modern surfaceFeatures utility can run.
-if [ ! -f system/surfaceFeaturesDict ]; then
+# Create or repair a minimal system/surfaceFeaturesDict if it is missing or malformed
+# Avoid overwriting a valid user-supplied file. If the first non-empty line does not
+# look like an OpenFOAM header we replace it with a safe, minimal dictionary and
+# strip any Windows CRLFs which can confuse OpenFOAM's parser.
+first_line=""
+if [ -f system/surfaceFeaturesDict ]; then
+    first_line=$(awk 'NF{print; exit}' system/surfaceFeaturesDict 2>/dev/null || true)
+fi
+
+if [ -z "$first_line" ] || [[ "$first_line" != "/*"* ]]; then
     cat > system/surfaceFeaturesDict <<'EOF'
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                   |
@@ -138,6 +146,10 @@ features
 mergeTolerance 1e-6;
 
 EOF
+    # Ensure no Windows CRLF remain which can confuse OpenFOAM header parser
+    if command -v sed >/dev/null 2>&1; then
+        sed -i 's/\r$//' system/surfaceFeaturesDict || true
+    fi
 fi
 
 # Prefer the modern utility if available
