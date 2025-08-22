@@ -38,9 +38,26 @@ echo "Step 1: Generating scaled baseball STL..."
 cd /$HOME/Isambaseball
 cd $MESH_DIR
 
-# Copy scaled STL
+# Copy scaled STL (using baseball.stl which may have intersecting surfaces)
 mkdir -p constant/triSurface
 cp /$HOME/Isambaseball/baseball.stl constant/triSurface/
+
+# Note: surfaceFeatureExtract is skipped due to intersecting surfaces in STL
+# snappyHexMesh will use implicit feature detection instead
+
+# Create a diagnostic tarball function so we can always package logs/STL
+# This will be invoked on error exits and at the end of successful runs.
+create_debug_tarball() {
+    DEBUG_NAME="mesh_debug_package_${SLURM_JOB_ID:-manual}.tar.gz"
+    echo "Creating diagnostic tarball: $DEBUG_NAME"
+    tar czvf "$DEBUG_NAME" --ignore-failed-read \
+        log.snappyHexMesh log.snappyHexMesh.noLayers log.blockMesh log.decomposePar log.checkMesh snappy_no_layers.log \
+        constant/polyMesh/boundary system/snappyHexMeshDict constant/triSurface/baseball.stl \
+        mesh_generation_*.out mesh_generation_*.err master_mesh.tar.gz 2>/dev/null || true
+    mv -f "$DEBUG_NAME" "$HOME/Isambaseball/" 2>/dev/null || cp -f "$DEBUG_NAME" "$HOME/Isambaseball/" 2>/dev/null || true
+    echo "Diagnostic package available at: $HOME/Isambaseball/$DEBUG_NAME"
+    chmod a+r "$HOME/Isambaseball/$DEBUG_NAME" 2>/dev/null || true
+}
 
 # Generate background mesh
 echo "Step 2: Generating background mesh..."
@@ -48,6 +65,8 @@ blockMesh > log.blockMesh 2>&1
 check_error() {
     if [ $? -ne 0 ]; then
         echo "ERROR: $1 failed"
+        # create diagnostic package before exiting so results are available
+        create_debug_tarball
         exit 1
     fi
 }
@@ -71,6 +90,10 @@ else
 fi
 
 echo "Running snappyHexMesh with $NPROCS MPI ranks"
+
+# Optional: run a diagnostic snappy run inside the Slurm job with layers disabled.
+# Set DIAG_SNAPPY=1 when submitting the job to enable this (default is 0).
+DIAG_SNAPPY=${DIAG_SNAPPY:-0}
 
 # Prefer mpirun, fall back to srun if available
 # Prepare domain decomposition for parallel snappyHexMesh
@@ -106,9 +129,25 @@ decomposePar > log.decomposePar 2>&1
 check_error "decomposePar"
 
 if command -v mpirun >/dev/null 2>&1; then
+    if [ "$DIAG_SNAPPY" = "1" ]; then
+        echo "Running diagnostic snappyHexMesh (addLayers=false) as DIAG_SNAPPY=1"
+        cp system/snappyHexMeshDict system/snappyHexMeshDict.noLayers || true
+        sed -i 's/addLayers[[:space:]]*true/addLayers false/' system/snappyHexMeshDict.noLayers || true
+        mpirun -np $NPROCS snappyHexMesh -parallel -overwrite -dict system/snappyHexMeshDict.noLayers > log.snappyHexMesh.noLayers 2>&1
+        echo "Diagnostic snappy log: log.snappyHexMesh.noLayers"
+    fi
+
     mpirun -np $NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
     RC=$?
 elif command -v srun >/dev/null 2>&1; then
+    if [ "$DIAG_SNAPPY" = "1" ]; then
+        echo "Running diagnostic snappyHexMesh (addLayers=false) as DIAG_SNAPPY=1"
+        cp system/snappyHexMeshDict system/snappyHexMeshDict.noLayers || true
+        sed -i 's/addLayers[[:space:]]*true/addLayers false/' system/snappyHexMeshDict.noLayers || true
+        srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite -dict system/snappyHexMeshDict.noLayers > log.snappyHexMesh.noLayers 2>&1
+        echo "Diagnostic snappy log: log.snappyHexMesh.noLayers"
+    fi
+
     srun --ntasks=$NPROCS snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
     RC=$?
 else
@@ -131,6 +170,34 @@ if [ $? -ne 0 ]; then
     echo "Continuing with mesh (often warnings are acceptable for complex geometries)"
 fi
 
+# Verify that snappyHexMesh produced the baseball boundary patch
+echo "Step 4b: Verifying presence of baseball patch in mesh..."
+if [ ! -f "constant/polyMesh/boundary" ]; then
+    echo "ERROR: boundary file not found after snappyHexMesh"
+    echo "Check log.snappyHexMesh for errors"
+    tail -200 log.snappyHexMesh 2>/dev/null || true
+    exit 1
+fi
+
+PATCH_LIST=$(awk '/^[[:space:]]*[a-zA-Z]/ && !/type|nFaces|startFace|physicalType/ {gsub(/^[[:space:]]+|[[:space:]]+$/,"",$0); print $0}' constant/polyMesh/boundary)
+echo "Available patches:"; echo "$PATCH_LIST"
+
+if echo "$PATCH_LIST" | grep -qiE "baseball|ball|surface"; then
+    echo "✓ baseball patch found in mesh"
+else
+    echo "ERROR: baseball patch NOT found in mesh. Aborting packaging."
+    echo "Boundary file contents:"; echo "-------------------------"; cat constant/polyMesh/boundary
+    echo "--- tail of log.snappyHexMesh ---"
+    tail -200 log.snappyHexMesh 2>/dev/null || true
+    echo "SUGGESTIONS:"
+    echo "  - Try rerunning snappyHexMesh with layers disabled (set addLayers false) to see if the surface is created without layer extrusion." 
+    echo "  - Inspect and repair the STL (remove intersecting triangles) or use an alternative STL (newbaseball.stl)."
+    echo "  - Re-run: sbatch ../1_generate_mesh.sh after fixes"
+    # produce diagnostic tarball so you can download logs & STL for analysis
+    create_debug_tarball
+    exit 1
+fi
+
 # Create clean mesh directory
 echo "Step 5: Creating mesh archive..."
 cd /$HOME/Isambaseball
@@ -144,6 +211,19 @@ tar -czf master_mesh.tar.gz master_mesh/
 
 # Get archive size
 ARCHIVE_SIZE=$(du -h master_mesh.tar.gz | cut -f1)
+
+# Also create a diagnostic tarball with logs, snappy outputs, dicts and geometry
+DEBUG_NAME="mesh_debug_package_${SLURM_JOB_ID:-manual}.tar.gz"
+echo "Creating diagnostic tarball: $DEBUG_NAME (contains logs, snappy outputs, dicts, boundary and STL)"
+tar czvf "$DEBUG_NAME" --ignore-failed-read \
+    log.snappyHexMesh log.snappyHexMesh.noLayers log.blockMesh log.decomposePar log.checkMesh snappy_no_layers.log \
+    constant/polyMesh/boundary system/snappyHexMeshDict constant/triSurface/baseball.stl \
+    mesh_generation_*.out mesh_generation_*.err master_mesh.tar.gz 2>/dev/null || true
+
+# Move diagnostic tar to home for easy download
+mv -f "$DEBUG_NAME" "$HOME/Isambaseball/" 2>/dev/null || cp -f "$DEBUG_NAME" "$HOME/Isambaseball/" 2>/dev/null || true
+echo "Diagnostic package available at: $HOME/Isambaseball/$DEBUG_NAME"
+chmod a+r "$HOME/Isambaseball/$DEBUG_NAME" 2>/dev/null || true
 
 echo ""
 echo "=========================================="
