@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=24
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=0-00:30:00
 #SBATCH --output=mesh_generation_%j.out
 #SBATCH --error=mesh_generation_%j.err
 
