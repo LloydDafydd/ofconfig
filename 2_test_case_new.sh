@@ -75,46 +75,48 @@ cat > 0/omega << EOF
 FoamFile
 {
     format      ascii;
-    class       volVectorField;
+    class       volScalarField;
     object      omega;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform (0 $OMEGA 0);  // Pure backspin
+# scalar omega (rad/s)
+internalField   uniform $OMEGA;
 
 boundaryField
 {
-    baseball
-    {
-        type            fixedValue;
-        value           uniform (0 $OMEGA 0);
-    }
-    
     inlet
     {
-        type            zeroGradient;
+        type            fixedValue;
+        value           uniform $OMEGA;
     }
     
-    outlet  
+    outlet
     {
         type            zeroGradient;
     }
     
     sides
     {
-        type            zeroGradient;
+        type            slip;
     }
     
     top
     {
-        type            zeroGradient;
+        type            slip;
     }
     
     bottom
     {
-        type            zeroGradient;
+        type            slip;
+    }
+    
+    baseball
+    {
+        type            omegaWallFunction;
+        value           uniform $OMEGA;
     }
 }
 EOF
@@ -125,7 +127,7 @@ echo "Decomposing domain for $SLURM_NTASKS cores..."
 # attempting to pass a fields list (decomposePar's -fields flag does not take
 # an argument and passing one caused a FOAM error). -copyZero is the safest
 # way to ensure custom initial fields like omega are present on each processor.
-decomposePar -copyZero > log.decomposePar 2>&1
+decomposePar > log.decomposePar 2>&1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Domain decomposition failed"
@@ -145,6 +147,102 @@ for pd in processor[0-9]*; do
         fi
     fi
 done
+
+# Verification: ensure processor directories contain expected initial fields
+echo "Verifying processor initial fields and boundary entries..."
+missing=0
+for pd in processor[0-9]*; do
+    if [ -d "$pd" ]; then
+        # Check omega presence
+        if [ ! -f "$pd/0/omega" ]; then
+            echo "MISSING: $pd/0/omega"
+            missing=1
+        fi
+
+        # Quick check for procBoundary entries in p boundaryField (common cause of IO errors)
+        if [ -f "$pd/0/p" ]; then
+            if ! grep -q "procBoundary" "$pd/0/p"; then
+                echo "WARNING: $pd/0/p does not contain procBoundary entries; decomposition may have been done incorrectly"
+                missing=1
+            fi
+        else
+            echo "MISSING: $pd/0/p"
+            missing=1
+        fi
+    fi
+done
+
+if [ $missing -ne 0 ]; then
+    echo "ERROR: Missing initial fields or processor boundary entries detected. Inspect log.decomposePar and processor*/constant/polyMesh/boundary"
+
+    print_diagnostics() {
+        echo
+        echo "=========================================="
+        echo "CASE DIAGNOSTICS"
+        echo "=========================================="
+
+        echo "--- last 200 lines of log.decomposePar ---"
+        if [ -f log.decomposePar ]; then
+            tail -n 200 log.decomposePar
+        else
+            echo "(no log.decomposePar found)"
+        fi
+
+        echo
+        echo "--- processor directories (summary) ---"
+        ls -ld processor* 2>/dev/null || echo "(no processor* directories found)"
+
+        echo
+        echo "--- Search for procBoundary in processor*/0/p ---"
+        for pd in processor[0-9]*; do
+            if [ -d "$pd" ]; then
+                echo ">>> $pd/0/p <<<"
+                if [ -f "$pd/0/p" ]; then
+                    echo "(first 200 lines)"
+                    sed -n '1,200p' "$pd/0/p" || true
+                    echo "(lines containing procBoundary)"
+                    grep -n "procBoundary" "$pd/0/p" || echo "(none)"
+                else
+                    echo "(missing)"
+                fi
+                echo
+            fi
+        done
+
+        echo "--- processor constant/polyMesh/boundary files ---"
+        for pd in processor[0-9]*; do
+            if [ -d "$pd" ]; then
+                b="$pd/constant/polyMesh/boundary"
+                echo ">>> $b <<<"
+                if [ -f "$b" ]; then
+                    sed -n '1,200p' "$b" || true
+                else
+                    echo "(missing)"
+                fi
+                echo
+            fi
+        done
+
+        echo "--- Original 0/ field snippets ---"
+        for f in omega U p; do
+            echo ">>> 0/$f <<<"
+            if [ -f "0/$f" ]; then
+                sed -n '1,120p' "0/$f" || true
+            else
+                echo "(missing)"
+            fi
+            echo
+        done
+
+        echo "--- Quick grep for procBoundary across processors ---"
+        grep -R --line-number "procBoundary" processor* 2>/dev/null || echo "(no procBoundary found in any processor*/0/p)"
+
+        echo "=========================================="
+    }
+
+    print_diagnostics
+    exit 1
+fi
 
 
 # Run simulation
