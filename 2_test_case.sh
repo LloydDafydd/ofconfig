@@ -3,9 +3,9 @@
 #SBATCH --job-name=baseball_test
 #SBATCH --partition=grace
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=24
+#SBATCH --ntasks-per-node=96
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=32G
+#SBATCH --mem=128G
 #SBATCH --time=1-00:00:00
 #SBATCH --output=test_case_%j.out
 #SBATCH --error=test_case_%j.err
