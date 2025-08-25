@@ -1,0 +1,266 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  9
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+
+/* 
+ * ENHANCED CONTROL DICTIONARY FOR SEAM-SHIFTED WAKE ANALYSIS
+ * ==========================================================
+ * 
+ * This enhanced version includes additional monitoring for seam-shifted wake
+ * effects, high-frequency force sampling, and detailed pressure field analysis.
+ * Use this version when studying SSW phenomena in detail.
+ */
+
+FoamFile
+{
+    format      ascii;        // Human-readable text format
+    class       dictionary;   // Dictionary type for configuration files
+    location    "system";     // Location within case directory structure
+    object      controlDict;  // Name identifier for this control dictionary
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// SOLVER SELECTION - optimized for SSW capture
+application     pimpleFoam;
+
+// SIMULATION TIMING - focused for 0.8s analysis
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         0.8;         // Limited to 0.8 seconds for focused analysis
+
+// TIME STEPPING - smaller steps for SSW resolution
+deltaT          5e-5;        // Reduced to 0.00005 seconds for better SSW capture
+writeControl    adjustableRunTime;
+writeInterval   0.05;        // More frequent output for SSW analysis
+purgeWrite      0;
+writeFormat     binary;
+writePrecision  8;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+
+// ADAPTIVE TIME STEPPING - tighter control for SSW
+adjustTimeStep  yes;
+maxCo           0.3;         // More conservative for SSW stability
+maxDeltaT       1e-3;
+
+// ENHANCED FUNCTION OBJECTS FOR SSW ANALYSIS
+functions
+{
+    // HIGH-FREQUENCY FORCE MONITORING
+    // Captures oscillations at ball rotation frequency
+    forces_highfreq
+    {
+        type            forces;
+        libs            (forces);
+        writeControl    timeStep;
+        writeInterval   1;              // Every time step for SSW oscillations
+        
+        patches         (baseball);
+        rho             rhoInf;
+        rhoInf          1.225;
+        CofR            (0 0 0);
+        
+        log             true;
+    }
+    
+    // STANDARD FORCE COEFFICIENTS
+    forceCoeffs
+    {
+        type            forceCoeffs;
+        libs            (forces);
+        writeControl    timeStep;
+        writeInterval   10;
+        
+        patches         (baseball);
+        rho             rhoInf;
+        rhoInf          1.225;
+        magUInf         38.0;
+        
+        liftDir         (0 0 1);        // Vertical (Magnus)
+        dragDir         (1 0 0);        // Streamwise
+        CofR            (0 0 0);
+        lRef            0.0732;
+        Aref            0.004215;
+        
+        log             true;
+    }
+    
+    // SEAM-ORIENTED FORCE ANALYSIS
+    // Decomposes forces in seam-aligned coordinate system
+    forces_seam_aligned
+    {
+        type            forces;
+        libs            (forces);
+        writeControl    timeStep;
+        writeInterval   5;
+        
+        patches         (baseball);
+        rho             rhoInf;
+        rhoInf          1.225;
+        CofR            (0 0 0);
+        
+        // Coordinate system aligned with seam orientation
+        coordinateSystem
+        {
+            type        cartesian;
+            origin      (0 0 0);
+            coordinateRotation
+            {
+                type    axesRotation;
+                e1      (1 0 0);        // Streamwise
+                e2      (0 0.707 0.707); // 45° from vertical (typical seam angle)
+                e3      (0 -0.707 0.707); // Perpendicular to seam
+            }
+        }
+        
+        log             true;
+    }
+    
+    // PRESSURE FIELD SAMPLING
+    // High-resolution pressure sampling around baseball surface
+    pressure_sampling
+    {
+        type            surfaces;
+        libs            (sampling);
+        writeControl    timeStep;
+        writeInterval   20;
+        
+        surfaceFormat   vtk;
+        
+        surfaces
+        (
+            baseball_surface
+            {
+                type        patch;
+                patches     (baseball);
+                triangulate false;
+            }
+        );
+        
+        fields          (p wallShearStress);
+    }
+    
+    // WAKE STRUCTURE ANALYSIS
+    // Samples velocity and pressure in the wake region
+    wake_sampling
+    {
+        type            sets;
+        libs            (sampling);
+        writeControl    timeStep;
+        writeInterval   50;
+        
+        setFormat       raw;
+        
+        sets
+        (
+            wake_centerline
+            {
+                type    uniform;
+                axis    x;
+                start   (0.05 0 0);     // Just behind baseball
+                end     (0.5 0 0);      // 0.5m downstream
+                nPoints 100;
+            }
+            
+            wake_vertical
+            {
+                type    uniform;
+                axis    z;
+                start   (0.1 0 -0.1);   // Cross-section at x=0.1m
+                end     (0.1 0 0.1);
+                nPoints 50;
+            }
+            
+            wake_lateral
+            {
+                type    uniform;
+                axis    y;
+                start   (0.1 -0.1 0);   // Cross-section at x=0.1m
+                end     (0.1 0.1 0);
+                nPoints 50;
+            }
+        );
+        
+        fields          (U p k omega);
+    }
+    
+    // SEAM PATTERN TRACKING
+    // Monitors forces as seam pattern rotates
+    seam_phase_monitor
+    {
+        type            coded;
+        libs            (utilityFunctionObjects);
+        writeControl    timeStep;
+        writeInterval   1;
+        
+        name            seamPhase;
+        
+        codeWrite
+        #{
+            // Calculate current seam phase angle
+            scalar t = mesh().time().value();
+            scalar omega = 251.33;  // rad/s
+            scalar seamPhase = fmod(omega * t * 180.0 / 3.14159, 360.0);
+            
+            // Write to file
+            OFstream os("postProcessing/seamPhase.dat", IOstream::app);
+            os << t << " " << seamPhase << endl;
+        #};
+    }
+    
+    // FIELD AVERAGING FOR MEAN FLOW
+    fieldAverage
+    {
+        type            fieldAverage;
+    libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+        
+        fields
+        (
+            U
+            {
+                mean        on;
+                prime2Mean  on;
+                base        time;
+            }
+            p
+            {
+                mean        on;
+                prime2Mean  on;
+                base        time;
+            }
+            wallShearStress
+            {
+                mean        on;
+                prime2Mean  off;
+                base        time;
+            }
+        );
+    }
+    
+    // VORTICITY CALCULATION
+    // Important for understanding wake deflection
+    vorticity
+    {
+        type            vorticity;
+    libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+    }
+    
+    // Q-CRITERION FOR VORTEX IDENTIFICATION
+    Q
+    {
+        type            Q;
+    libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+    }
+}
+
+// ************************************************************************* //
