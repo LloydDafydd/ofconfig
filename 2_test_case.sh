@@ -71,7 +71,7 @@ sed -i "s/uniform (38.0 0 0)/uniform ($VELOCITY 0 0)/" 0/U
 
 # Update rotational velocity for spinning baseball
 cat > 0/omega << EOF
-/*--------------------------------*- C++ -*----------------------------------*\
+/*--------------------------------*- C++ -*----------------------------------*/
 FoamFile
 {
     format      ascii;
@@ -128,6 +128,11 @@ else
     # portable fallback: remove \r characters
     sed -i 's/\r$//' 0/omega || true
 fi
+# Remove UTF-8 BOM if present (some editors add BOM which breaks OpenFOAM headers)
+awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' 0/omega > 0/omega.nobom || true
+mv -f 0/omega.nobom 0/omega || true
+# Ensure file ends with a newline
+tail -c1 0/omega | od -An -t u1 | grep -q . || echo >> 0/omega || true
 
 # Domain decomposition for parallel execution
 echo "Decomposing domain for $SLURM_NTASKS cores..."
@@ -152,12 +157,16 @@ for pd in processor[0-9]*; do
         if [ -f "0/omega" ]; then
             cp -f "0/omega" "$pd/0/omega"
             echo "  copied 0/omega -> $pd/0/omega"
-            # Normalize line endings in processor copy too
+            # Remove BOM from processor copy and normalize line endings
+            awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' "$pd/0/omega" > "$pd/0/omega.nobom" || true
+            mv -f "$pd/0/omega.nobom" "$pd/0/omega" || true
             if command -v dos2unix >/dev/null 2>&1; then
                 dos2unix "$pd/0/omega" >/dev/null 2>&1 || true
             else
                 sed -i 's/\r$//' "$pd/0/omega" || true
             fi
+            # Ensure processor copy ends with a newline
+            tail -c1 "$pd/0/omega" | od -An -t u1 | grep -q . || echo >> "$pd/0/omega" || true
         fi
     fi
 done
