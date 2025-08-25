@@ -130,7 +130,7 @@ functions
     fieldAverage
     {
         type            fieldAverage;           // Field averaging function object
-        libs            (fieldFunctionObjects); // Required library
+    libs            ("libfieldFunctionObjects.so"); // Required library
         writeControl    writeTime;             // Write when fields are written
         
         fields          // Fields to average over time
