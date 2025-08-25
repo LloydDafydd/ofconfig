@@ -41,6 +41,13 @@ cd $WORK_DIR
 # Copy base case
 cp -r $HOME/Isambaseball/openfoam_case/* .
 
+# Ensure functions/forceCoeffs (contains pitchAxis) is present in working case
+if [ -f "$HOME/Isambaseball/openfoam_case/system/functions/forceCoeffs" ]; then
+    mkdir -p system/functions
+    cp -f "$HOME/Isambaseball/openfoam_case/system/functions/forceCoeffs" system/functions/forceCoeffs
+    echo "Copied system/functions/forceCoeffs into case"
+fi
+
 # Install pre-generated mesh
 if [ -f "$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
