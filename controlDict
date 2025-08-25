@@ -1,0 +1,167 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+
+/* 
+ * CONTROL DICTIONARY FOR SPINNING BASEBALL CFD SIMULATION
+ * ========================================================
+ * 
+ * This file controls the overall simulation parameters for analyzing
+ * the aerodynamics of a spinning baseball (2400 RPM) in crossflow (85 mph).
+ * The simulation captures the Magnus effect and wake turbulence.
+ */
+
+FoamFile
+{
+    format      ascii;        // File format: ascii (human-readable) or binary
+    class       dictionary;   // OpenFOAM object type for configuration files
+    location    "system";     // Location within case directory structure
+    object      controlDict;  // Name identifier for this control dictionary
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// SOLVER SELECTION
+// pimpleFoam: Transient solver for incompressible, turbulent flow
+// Ideal for capturing unsteady flow around spinning objects
+application     pimpleFoam;
+
+// SIMULATION START CONTROL
+startFrom       startTime;   // Start simulation from specified time
+startTime       0;           // Initial time (seconds) - start from rest
+
+// SIMULATION END CONTROL
+stopAt          endTime;     // Stop condition: when endTime is reached
+endTime         0.55;        // Total simulation time (seconds)
+                            // 0.55 seconds is sufficient for trajectory analysis
+
+// TIME STEPPING CONTROL
+deltaT          1e-4;        // Time step size (0.0001 seconds)
+                            // Small time step ensures numerical stability
+                            // and captures high-frequency spinning dynamics
+
+// OUTPUT CONTROL
+writeControl    adjustableRunTime;  // Write output based on simulation time
+writeInterval   0.1;                // Save results every 0.1 seconds
+                                   // Provides good temporal resolution for analysis
+
+purgeWrite      0;           // Number of time directories to keep (0 = keep all)
+                            // Useful for detailed post-processing and animation
+
+// FILE FORMAT CONTROL
+writeFormat     binary;      // Output format: binary for smaller file sizes
+writePrecision  8;          // Numerical precision (8 significant digits)
+writeCompression off;       // File compression disabled for faster I/O
+
+// TIME DISPLAY CONTROL
+timeFormat      general;     // Time notation format
+timePrecision   6;          // Number of digits for time precision
+
+// RUNTIME MODIFICATION
+runTimeModifiable true;     // Allow modification of parameters during simulation
+                           // Enables real-time adjustments for debugging
+
+// ADAPTIVE TIME STEPPING
+adjustTimeStep  yes;        // Enable automatic time step adjustment
+maxCo           0.5;        // Maximum Courant number for stability
+                           // Ensures CFL condition is satisfied
+
+maxDeltaT       1e-3;       // Maximum allowed time step (0.001 seconds)
+                           // Prevents time step from becoming too large
+
+// FUNCTION OBJECTS FOR FORCE ANALYSIS
+// ===================================
+// Function objects to calculate forces and moments on baseball
+functions
+{
+    // FORCE CALCULATION
+    // Computes forces (drag, lift, side force) on baseball surface
+    forces
+    {
+        type            forces;           // Function object type for force calculation
+        libs            ("libforces.so"); // Correct library specification for v2312
+        writeControl    timeStep;        // Write forces every time step
+        writeInterval   10;              // Output every 10 time steps (0.001 sec)
+        
+        patches         (baseball);      // Surface patches to analyze (baseball surface)
+        rho             rhoInf;          // Density specification method
+        rhoInf          1.225;          // Air density (kg/m³) at sea level, 15°C
+        CofR            (0 0 0);        // Center of rotation (baseball center)
+        
+        log             true;           // Print forces to log file during simulation
+    }
+    
+    // FORCE COEFFICIENTS CALCULATION
+    // Computes dimensionless force coefficients (Cd, Cl, Cs)
+    forceCoeffs
+    {
+        type            forceCoeffs;     // Function object for force coefficients
+        libs            ("libforces.so"); // Correct library specification for v2312
+        writeControl    timeStep;        // Write coefficients every time step
+        writeInterval   10;              // Output every 10 time steps (0.001 sec)
+        
+        patches         (baseball);      // Surface to analyze
+        rho             rhoInf;          // Density specification
+        rhoInf          1.225;          // Air density (kg/m³)
+        magUInf         31.2928;        // Freestream velocity magnitude (m/s)
+                                       // Will be updated by job script for each case
+        
+    liftDir         (0 0 1);        // Lift direction (z-axis, vertical)
+    dragDir         (1 0 0);        // Drag direction (x-axis, flow direction)
+    sideDir         (0 1 0);        // Side force direction (y-axis, lateral)
+
+    // Added axes expected by some forceCoeffs implementations
+    pitchAxis       (0 1 0);
+    yawAxis         (0 0 1);
+
+    CofR            (0 0 0);        // Center of rotation
+        lRef            0.0732;         // Reference length: baseball diameter (m)
+        Aref            0.004215;       // Reference area: baseball cross-section (πr²)
+                                       // π × (0.0366)² = 0.004215 m²
+        
+        log             true;           // Print coefficients to terminal/log
+    }
+    
+    // FIELD AVERAGING
+    // Computes time-averaged flow fields for statistical analysis
+    fieldAverage
+    {
+        type            fieldAverage;           // Field averaging function object
+        libs            (fieldFunctionObjects); // Required library
+        writeControl    writeTime;             // Write when fields are written
+        
+        fields          // Fields to average over time
+        (
+            U           // Velocity field averaging
+            {
+                mean        on;         // Compute time-averaged velocity
+                prime2Mean  on;         // Compute velocity fluctuation squares (turbulence)
+                base        time;       // Time-based averaging
+            }
+            p           // Pressure field averaging  
+            {
+                mean        on;         // Compute time-averaged pressure
+                prime2Mean  on;         // Compute pressure fluctuation squares
+                base        time;       // Time-based averaging
+            }
+        );
+    }
+    
+    // VTK OUTPUT DISABLED FOR v2312 COMPATIBILITY
+    // Enable after main simulations are working
+    /*
+    vtkWrite
+    {
+        type            vtkWrite;
+        libs            (utilityFunctionObjects);
+        writeControl    writeTime;
+        writeInterval   10;
+        fields          (U p);
+    }
+    */
+}
+
+// ************************************************************************* //
