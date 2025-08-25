@@ -121,12 +121,29 @@ EOF
 
 # Domain decomposition for parallel execution
 echo "Decomposing domain for $SLURM_NTASKS cores..."
-decomposePar > log.decomposePar 2>&1
+# Explicitly ask decomposePar to decompose common initial fields, including custom fields like omega.
+# This helps some OpenFOAM versions/utilities to include non-standard volFields in processor folders.
+decomposePar -fields "(U p k nut omega)" > log.decomposePar 2>&1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Domain decomposition failed"
     exit 1
 fi
+
+# Ensure custom fields (like omega) are present in each processor directory
+# DecomposePar sometimes does not create or copy custom files; copy 0/omega
+# into each processor*/0/omega so parallel runs can read them.
+echo "Distributing custom initial fields to processor folders..."
+for pd in processor[0-9]*; do
+    if [ -d "$pd" ]; then
+        mkdir -p "$pd/0"
+        if [ -f "0/omega" ]; then
+            cp -f "0/omega" "$pd/0/omega"
+            echo "  copied 0/omega -> $pd/0/omega"
+        fi
+    fi
+done
+
 
 # Run simulation
 echo "Starting CFD simulation..."
