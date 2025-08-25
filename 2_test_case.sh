@@ -75,49 +75,59 @@ cat > 0/omega << EOF
 FoamFile
 {
     format      ascii;
-    class       volVectorField;
+    class       volScalarField;
+    location    "0";
     object      omega;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform (0 $OMEGA 0);  // Pure backspin
+# scalar omega (rad/s)
+internalField   uniform $OMEGA;
 
 boundaryField
 {
-    baseball
-    {
-        type            fixedValue;
-        value           uniform (0 $OMEGA 0);
-    }
-    
     inlet
     {
-        type            zeroGradient;
+        type            fixedValue;
+        value           uniform $OMEGA;
     }
     
-    outlet  
+    outlet
     {
         type            zeroGradient;
     }
     
     sides
     {
-        type            zeroGradient;
+        type            slip;
     }
     
     top
     {
-        type            zeroGradient;
+        type            slip;
     }
     
     bottom
     {
-        type            zeroGradient;
+        type            slip;
+    }
+    
+    baseball
+    {
+        type            omegaWallFunction;
+        value           uniform $OMEGA;
     }
 }
 EOF
+# Normalize line endings (remove CR from CRLF) in case this script was edited on Windows
+if command -v dos2unix >/dev/null 2>&1; then
+    dos2unix 0/omega >/dev/null 2>&1 || true
+else
+    # portable fallback: remove \r characters
+    sed -i 's/\r$//' 0/omega || true
+fi
 
 # Domain decomposition for parallel execution
 echo "Decomposing domain for $SLURM_NTASKS cores..."
@@ -142,6 +152,12 @@ for pd in processor[0-9]*; do
         if [ -f "0/omega" ]; then
             cp -f "0/omega" "$pd/0/omega"
             echo "  copied 0/omega -> $pd/0/omega"
+            # Normalize line endings in processor copy too
+            if command -v dos2unix >/dev/null 2>&1; then
+                dos2unix "$pd/0/omega" >/dev/null 2>&1 || true
+            else
+                sed -i 's/\r$//' "$pd/0/omega" || true
+            fi
         fi
     fi
 done
