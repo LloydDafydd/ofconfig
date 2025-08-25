@@ -83,7 +83,7 @@ FoamFile
 
 dimensions      [0 0 -1 0 0 0 0];
 
-# scalar omega (rad/s)
+// scalar omega (rad/s)
 internalField   uniform $OMEGA;
 
 boundaryField
