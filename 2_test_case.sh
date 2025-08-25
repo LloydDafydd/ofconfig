@@ -155,18 +155,34 @@ for pd in processor[0-9]*; do
     if [ -d "$pd" ]; then
         mkdir -p "$pd/0"
         if [ -f "0/omega" ]; then
-            cp -f "0/omega" "$pd/0/omega"
-            echo "  copied 0/omega -> $pd/0/omega"
-            # Remove BOM from processor copy and normalize line endings
-            awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' "$pd/0/omega" > "$pd/0/omega.nobom" || true
-            mv -f "$pd/0/omega.nobom" "$pd/0/omega" || true
-            if command -v dos2unix >/dev/null 2>&1; then
-                dos2unix "$pd/0/omega" >/dev/null 2>&1 || true
+            if [ -f "$pd/0/omega" ]; then
+                echo "  updating $pd/0/omega (preserving procBoundary entries)"
+                # Replace internalField uniform value
+                sed -i -E 's/^(\s*internalField\s+uniform\s+)[^;]+;/\1'$OMEGA';/' "$pd/0/omega" || true
+                # Replace value uniform lines (inlet, baseball, etc.) with scalar omega
+                sed -i -E 's/^(\s*value\s+uniform\s+)[^;]+;/\1'$OMEGA';/' "$pd/0/omega" || true
+                # Normalize and remove BOM if any
+                awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' "$pd/0/omega" > "$pd/0/omega.nobom" || true
+                mv -f "$pd/0/omega.nobom" "$pd/0/omega" || true
+                if command -v dos2unix >/dev/null 2>&1; then
+                    dos2unix "$pd/0/omega" >/dev/null 2>&1 || true
+                else
+                    sed -i 's/\r$//' "$pd/0/omega" || true
+                fi
+                tail -c1 "$pd/0/omega" | od -An -t u1 | grep -q . || echo >> "$pd/0/omega" || true
             else
-                sed -i 's/\r$//' "$pd/0/omega" || true
+                cp -f "0/omega" "$pd/0/omega"
+                echo "  copied 0/omega -> $pd/0/omega"
+                # Remove BOM from processor copy and normalize line endings
+                awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' "$pd/0/omega" > "$pd/0/omega.nobom" || true
+                mv -f "$pd/0/omega.nobom" "$pd/0/omega" || true
+                if command -v dos2unix >/dev/null 2>&1; then
+                    dos2unix "$pd/0/omega" >/dev/null 2>&1 || true
+                else
+                    sed -i 's/\r$//' "$pd/0/omega" || true
+                fi
+                tail -c1 "$pd/0/omega" | od -An -t u1 | grep -q . || echo >> "$pd/0/omega" || true
             fi
-            # Ensure processor copy ends with a newline
-            tail -c1 "$pd/0/omega" | od -An -t u1 | grep -q . || echo >> "$pd/0/omega" || true
         fi
     fi
 done
