@@ -77,8 +77,12 @@ functions
     {
         type            forces;           // Function object type for force calculation
         libs            ("libforces.so"); // Correct library specification for v2312
-        writeControl    timeStep;        // Write forces every time step
-        writeInterval   10;              // Output every 10 time steps (0.001 sec)
+        // Use runTime-based writing so outputs are produced at fixed physical
+        // time intervals (seconds). This avoids missing early-time data when
+        // timestep sizes change. Set interval to 0.01s to capture data through
+        // 0.55s (≈55 samples). Adjust as needed.
+        writeControl    runTime;
+        writeInterval   0.01;
         
         patches         (baseball);      // Surface patches to analyze (baseball surface)
         rho             rhoInf;          // Density specification method
@@ -94,8 +98,10 @@ functions
     {
         type            forceCoeffs;     // Function object for force coefficients
         libs            ("libforces.so"); // Correct library specification for v2312
-        writeControl    timeStep;        // Write coefficients every time step
-        writeInterval   10;              // Output every 10 time steps (0.001 sec)
+    // Use runTime-based writing so coefficient outputs are recorded at
+    // fixed physical times rather than every N timesteps.
+    writeControl    runTime;
+    writeInterval   0.01;
         
         patches         (baseball);      // Surface to analyze
         rho             rhoInf;          // Density specification
