@@ -1,1 +1,107 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Wind tunnel dimensions (large enough for far-field boundary conditions)
+// Baseball at origin, inlet upstream, outlet downstream
+
+convertToMeters 1;
+
+// Domain dimensions - ensuring symmetry in y-direction (lateral)
+xMin    -2.0;   // 2m upstream (about 55 baseball diameters)
+xMax     4.0;   // 4m downstream (about 110 baseball diameters)
+yMin    -1.5;   // 1.5m to side (about 41 baseball diameters) - symmetric
+yMax     1.5;   // 1.5m to side - symmetric
+zMin    -1.5;   // 1.5m bottom (about 41 baseball diameters)
+zMax     1.5;   // 1.5m top
+
+vertices
+(
+    ($xMin $yMin $zMin)  // 0
+    ($xMax $yMin $zMin)  // 1
+    ($xMax $yMax $zMin)  // 2
+    ($xMin $yMax $zMin)  // 3
+    ($xMin $yMin $zMax)  // 4
+    ($xMax $yMin $zMax)  // 5
+    ($xMax $yMax $zMax)  // 6
+    ($xMin $yMax $zMax)  // 7
+);
+
+blocks
+(
+    // Coarser background grid: fine resolution will be created near the baseball
+    // by snappyHexMesh refinements. Reducing the base resolution drastically
+    // cuts total cell count and speeds up meshing & solves.
+    hex (0 1 2 3 4 5 6 7) (80 48 48) simpleGrading (1 1 1)
+);
+
+edges
+(
+);
+
+boundary
+(
+    inlet
+    {
+        type patch;
+        faces
+        (
+            (0 4 7 3)
+        );
+    }
+    
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (2 6 5 1)
+        );
+    }
+    
+    sides
+    {
+        type patch;
+        faces
+        (
+            (1 5 4 0)  // -Y face
+            (3 7 6 2)  // +Y face
+        );
+    }
+    
+    top
+    {
+        type patch;
+        faces
+        (
+            (4 5 6 7)
+        );
+    }
+    
+    bottom
+    {
+        type patch;
+        faces
+        (
+            (0 3 2 1)
+        );
+    }
+);
+
+mergePatchPairs
+(
+);
+
+// ************************************************************************* //
 
