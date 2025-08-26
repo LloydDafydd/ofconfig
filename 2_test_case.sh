@@ -3,8 +3,8 @@
 #SBATCH --job-name=baseball_test
 #SBATCH --partition=grace
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=96
-#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=24   # MPI ranks per node (hybrid: ranks * threads = total cores)
+#SBATCH --cpus-per-task=4     # OpenMP threads per rank
 #SBATCH --mem=128G
 #SBATCH --time=1-00:00:00
 #SBATCH --output=test_case_%j.out
@@ -46,6 +46,10 @@ echo "Set OMP_NUM_THREADS=$OMP_NUM_THREADS"
 WORK_DIR="test_case_v85_s2000"
 mkdir -p $WORK_DIR
 cd $WORK_DIR
+
+# Hybrid MPI+OpenMP configuration: ranks-per-node * cpus-per-task should match cores per node
+# RANKS_PER_NODE is used to instruct mpirun how to map ranks across sockets
+RANKS_PER_NODE=24
 
 # Copy base case
 cp -r $HOME/Isambaseball/openfoam_case/* .
@@ -336,10 +340,20 @@ fi
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
 
-echo "Running pimpleFoam with MPI binding: OMP_NUM_THREADS=$OMP_NUM_THREADS"
-# Prefer explicit core binding to avoid thread/process oversubscription.
-# Export OMP_NUM_THREADS to MPI ranks, bind ranks to cores and map by socket.
-mpirun --report-bindings --bind-to core --map-by socket -x OMP_NUM_THREADS -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
+echo "Running pimpleFoam with hybrid MPI+OpenMP: OMP_NUM_THREADS=$OMP_NUM_THREADS"
+# Compute total ranks (if SLURM_NTASKS is not set, use NNODES*RANKS_PER_NODE)
+if [ -n "$SLURM_NTASKS" ]; then
+    TOTAL_RANKS=$SLURM_NTASKS
+elif [ -n "$SLURM_NNODES" ]; then
+    TOTAL_RANKS=$(( SLURM_NNODES * RANKS_PER_NODE ))
+else
+    # fallback to single node RANKS_PER_NODE
+    TOTAL_RANKS=$RANKS_PER_NODE
+fi
+
+# Use ppr (processes-per-resource) mapping to distribute ranks across sockets and
+# bind ranks to cores; export OMP_NUM_THREADS to processes.
+mpirun --report-bindings --bind-to core --map-by ppr:${RANKS_PER_NODE}:socket -x OMP_NUM_THREADS -np $TOTAL_RANKS pimpleFoam -parallel > log.pimpleFoam 2>&1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Simulation failed"
