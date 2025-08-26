@@ -14,7 +14,7 @@
 
 # Load required modules
 module purge
-module load OpenFOAM/v2312-foss-2023a  # Adjust version as needed
+module load openmpi/5.0.8/5.0.8
 
 # Set OpenFOAM environment
 source $FOAM_BASH
