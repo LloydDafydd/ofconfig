@@ -1,0 +1,135 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+
+/*
+ * FINITE VOLUME SCHEMES DICTIONARY FOR SPINNING BASEBALL CFD
+ * ==========================================================
+ * 
+ * This file defines the numerical discretization schemes for:
+ * - Time derivatives (temporal discretization)
+ * - Spatial derivatives (gradient, divergence, Laplacian)
+ * - Interpolation methods
+ * 
+ * Schemes are selected for accuracy, stability, and boundedness
+ * in turbulent flow simulations around complex geometries.
+ */
+
+FoamFile
+{
+    format      ascii;        // Human-readable text format
+    class       dictionary;   // Dictionary type for scheme definitions
+    location    "system";     // Location within case directory
+    object      fvSchemes;    // Name identifier for schemes dictionary
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+/*
+ * TIME DERIVATIVE SCHEMES (ddtSchemes)
+ * ===================================
+ * Defines how time derivatives ∂φ/∂t are discretized
+ */
+ddtSchemes
+{
+    default         Euler;      // First-order Euler for cheaper per-step cost
+                               // Reduced temporal accuracy but faster
+}
+
+/*
+ * GRADIENT SCHEMES (gradSchemes)
+ * ==============================
+ * Defines how gradients ∇φ are calculated
+ */
+gradSchemes
+{
+    default         Gauss linear;  // Gauss integration with linear interpolation
+                                  // Second-order accurate, central differencing
+                                  // Standard choice for most applications
+                                  // Provides good balance of accuracy and stability
+}
+
+/*
+ * DIVERGENCE SCHEMES (divSchemes)
+ * ===============================
+ * Defines how divergence terms ∇·(φU) are discretized
+ * Critical for convection terms in transport equations
+ */
+divSchemes
+{
+    default         none;                    // No default - must specify each term
+                                            // Prevents accidental use of inappropriate schemes
+    
+    // MOMENTUM CONVECTION: div(phi,U) = ∇·(ρUU)
+    div(phi,U)      Gauss upwind; // Use upwind for momentum for stability and speed
+                                            // Linear upwind scheme with gradient correction
+                                            // Upwind for stability, gradient for accuracy
+                                            // Ideal for momentum equations in complex flows
+    
+    // TURBULENCE MODEL CONVECTION TERMS
+    div(phi,k)      Gauss limitedLinear 1;  // Turbulent kinetic energy transport
+    div(phi,omega)  Gauss limitedLinear 1;  // Specific dissipation rate transport
+    div(phi,epsilon) Gauss limitedLinear 1; // Turbulent dissipation transport
+    div(phi,nuTilda) Gauss limitedLinear 1; // Modified viscosity transport
+                                            // limitedLinear maintains boundedness
+                                            // Prevents negative turbulence values
+    
+    // VISCOUS STRESS DIVERGENCE
+    div((nuEff*dev2(T(grad(U))))) Gauss linear;
+                                            // Effective viscosity times deviatoric stress
+                                            // Linear scheme for diffusive terms
+}
+
+/*
+ * LAPLACIAN SCHEMES (laplacianSchemes)
+ * ====================================
+ * Defines how Laplacian terms ∇²φ are discretized
+ * Used for diffusion terms in transport equations
+ */
+laplacianSchemes
+{
+    default         Gauss linear;  // Remove orthogonal correction for speed
+                                            // If non-orthogonality causes issues, revert
+}
+
+/*
+ * INTERPOLATION SCHEMES (interpolationSchemes)
+ * ============================================
+ * Defines how values are interpolated from cell centers to faces
+ */
+interpolationSchemes
+{
+    default         linear;                 // Linear interpolation (central differencing)
+                                           // Second-order accurate
+                                           // Standard choice for most variables
+}
+
+/*
+ * SURFACE NORMAL GRADIENT SCHEMES (snGradSchemes)
+ * ===============================================
+ * Defines how surface normal gradients are calculated
+ */
+snGradSchemes
+{
+    default         corrected;             // Orthogonal correction for mesh non-orthogonality
+                                          // Important for accurate gradients on curved surfaces
+                                          // Maintains second-order accuracy
+}
+
+/*
+ * WALL DISTANCE CALCULATION
+ * =========================
+ * Defines method for calculating distance to nearest wall
+ * Used by turbulence models for near-wall treatment
+ */
+wallDist
+{
+    method meshWave;                       // Mesh wave algorithm for wall distance
+                                          // Fast, accurate method for complex geometries
+                                          // Essential for y+ calculations in turbulence models
+}
+
+// ************************************************************************* //
