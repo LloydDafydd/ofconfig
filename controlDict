@@ -103,10 +103,27 @@ functions
         dragDir         (1 0 0);        // Drag direction (x-axis, flow direction)
         sideDir         (0 1 0);        // Side force direction (y-axis, lateral)
 
+        coordinateSystem
+        {
+            type    cartesian;
+            origin  (0 0 0);
+            coordinateRotation
+            {
+                type    axesRotation;
+                e1      (1 0 0);    // x-axis (drag)
+                e2      (0 1 0);    // y-axis (side)
+                e3      (0 0 1);    // z-axis (lift)
+            }
+        }
+
+        pitchAxis       (0 1 0);        // Pitch axis (y-axis, lateral)
+
         CofR            (0 0 0);        // Center of rotation
         lRef            0.0732;         // Baseball diameter (m)
         Aref            0.004215;       // Baseball cross-section (πr²)
         
+        fields          (Cm Cd Cl Cs Cl(f) Cl(r));
+
         log             true;
     }
     
