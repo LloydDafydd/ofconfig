@@ -48,6 +48,38 @@ if [ -f "$HOME/Isambaseball/openfoam_case/system/functions/forceCoeffs" ]; then
     echo "Copied system/functions/forceCoeffs into case"
 fi
 
+# Patch controlDict to use larger time steps, adaptive stepping and reduce I/O
+CONTROL=system/controlDict
+if [ -f "$CONTROL" ]; then
+    echo "Patching $CONTROL for faster runs (larger deltaT, adaptive stepping, reduced I/O)"
+    # Set a larger initial time step (10x) and enable adaptive stepping
+    if grep -q "^\s*deltaT" "$CONTROL"; then
+        sed -i -E 's/^\s*deltaT.*/deltaT          1e-3;/' "$CONTROL"
+    else
+        echo "deltaT          1e-3;" >> "$CONTROL"
+    fi
+    if grep -q "^\s*adjustTimeStep" "$CONTROL"; then
+        sed -i -E 's/^\s*adjustTimeStep.*/adjustTimeStep   yes;/' "$CONTROL"
+    else
+        echo "adjustTimeStep   yes;" >> "$CONTROL"
+    fi
+    # Allow a larger Courant number (tuneable)
+    sed -i -E '/^\s*maxCo/ d' "$CONTROL"
+    echo "maxCo           1.5;" >> "$CONTROL"
+    sed -i -E '/^\s*maxDeltaT/ d' "$CONTROL"
+    echo "maxDeltaT       1e-2;" >> "$CONTROL"
+
+    # Reduce I/O frequency (write every N timesteps)
+    sed -i -E '/^\s*writeControl/ d' "$CONTROL"
+    echo "writeControl    timeStep;" >> "$CONTROL"
+    sed -i -E '/^\s*writeInterval/ d' "$CONTROL"
+    echo "writeInterval   50;" >> "$CONTROL"
+
+    # Reduce precision slightly to speed I/O
+    sed -i -E '/^\s*writePrecision/ d' "$CONTROL"
+    echo "writePrecision  6;" >> "$CONTROL"
+fi
+
 # Install pre-generated mesh
 if [ -f "$HOME/Isambaseball/master_mesh.tar.gz" ]; then
     echo "Installing pre-generated mesh..."
