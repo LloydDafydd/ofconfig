@@ -94,40 +94,43 @@ functions
     
     // FORCE COEFFICIENTS CALCULATION
     // Computes dimensionless force coefficients (Cd, Cl, Cs)
-    forceCoeffs
-    {
-        type            forceCoeffs;     // Function object for force coefficients
-        libs            ("libforces.so"); // Correct library specification for v2312
-    // Use runTime-based writing so coefficient outputs are recorded at
-    // fixed physical times rather than every N timesteps.
-
+forceCoeffs
+{
+    type            forceCoeffs;
+    libs            ("libforces.so");
+    
     writeControl    timeStep;
     writeInterval   50;
-       
-        patches         (baseball);      // Surface to analyze
-        rho             rhoInf;          // Density specification
-        rhoInf          1.225;          // Air density (kg/m³)
-        magUInf         31.2928;        // Freestream velocity magnitude (m/s)
-                                       // Will be updated by job script for each case
-        
-    liftDir         (0 0 1);        // Lift direction (z-axis, vertical)
-    dragDir         (1 0 0);        // Drag direction (x-axis, flow direction)
-    sideDir         (0 1 0);        // Side force direction (y-axis, lateral)
 
-    // Added axes expected by some forceCoeffs implementations
-    pitchAxis       (0 1 0);
-    yawAxis         (0 0 1);
+    patches         (baseball);
+    rho             rhoInf;
+    rhoInf          1.225;
+    magUInf         38.0;
 
-    CofR            (0 0 0);        // Center of rotation
-        lRef            0.0732;         // Reference length: baseball diameter (m)
-        Aref            0.004215;       // Reference area: baseball cross-section (πr²)
-                                       // π × (0.0366)² = 0.004215 m²
-
-    fields          (Cm Cd Cl Cs Cl(f) Cl(r));
-
-        
-        log             true;           // Print coefficients to terminal/log
+    // Use coordinateSystem approach for OpenFOAM 2312
+    coordinateSystem
+    {
+        type    cartesian;
+        origin  (0 0 0);
+        coordinateRotation
+        {
+            type    axesRotation;
+            e1      (1 0 0);    // x-axis (drag)
+            e2      (0 1 0);    // y-axis (side)
+            e3      (0 0 1);    // z-axis (lift)
+        }
     }
+
+    liftDir         (0 0 1);
+    dragDir         (1 0 0);
+    sideDir         (0 1 0);
+
+    CofR            (0 0 0);
+    lRef            0.0732;
+    Aref            0.004215;
+
+    log             true;
+}
     
     // FIELD AVERAGING
     // Computes time-averaged flow fields for statistical analysis
