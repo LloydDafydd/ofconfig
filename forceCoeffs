@@ -10,8 +10,8 @@ forceCoeffs
     // time intervals (seconds). This avoids missing early-time data when
     // timestep sizes change. Set interval to 0.01s to capture data through
     // 0.55s (≈55 samples). Adjust as needed.
-    writeControl    runTime;
-    writeInterval   0.01;
+    writeControl    timeStep;
+    writeInterval   50;
 
     patches         (baseball);
     rho             rhoInf;
@@ -29,6 +29,17 @@ forceCoeffs
     CofR            (0 0 0);
     lRef            0.0732;
     Aref            0.004215;
+
+    writeCoeffs
+    {
+        Cm       yes; // Pitching Moment coefficient
+        Cd       yes; // Drag coefficient
+        Cl       yes; // Lift coefficient
+        Cs       yes; // <-- YOU NEED TO ADD THIS LINE FOR SIDE FORCE
+        // You can also add your custom ones if they are defined
+        Cl(f)    yes;
+        Cl(r)    yes;
+    }
 
     log             true;
 }
