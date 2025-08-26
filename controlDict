@@ -38,39 +38,33 @@ stopAt          endTime;     // Stop condition: when endTime is reached
 endTime         0.55;        // Total simulation time (seconds)
                             // 0.55 seconds is sufficient for trajectory analysis
 
+timePrecision   6;          // Number of digits for time precision
 // TIME STEPPING CONTROL
-deltaT          1e-4;        // Time step size (0.0001 seconds)
-                            // Small time step ensures numerical stability
-                            // and captures high-frequency spinning dynamics
+deltaT          1e-3;        // Initial time step size (0.001 s)
+                            // Increased initial step to speed up runs; adaptive stepping limits it.
 
-// OUTPUT CONTROL
-writeControl    adjustableRunTime;  // Write output based on simulation time
-writeInterval   0.1;                // Save results every 0.1 seconds
-                                   // Provides good temporal resolution for analysis
+// OUTPUT CONTROL (reduced I/O for performance)
+writeControl    timeStep;     // Write based on timesteps
+writeInterval   50;           // Save results every 50 timesteps (reduce I/O)
 
-purgeWrite      0;           // Number of time directories to keep (0 = keep all)
-                            // Useful for detailed post-processing and animation
+purgeWrite      0;            // Keep all time directories for post-processing
 
 // FILE FORMAT CONTROL
-writeFormat     binary;      // Output format: binary for smaller file sizes
-writePrecision  8;          // Numerical precision (8 significant digits)
-writeCompression off;       // File compression disabled for faster I/O
+writeFormat     binary;       // Output format: binary for smaller file sizes
+writePrecision  6;            // Lower precision to speed up I/O
+writeCompression off;         // No compression for speed
 
 // TIME DISPLAY CONTROL
-timeFormat      general;     // Time notation format
-timePrecision   6;          // Number of digits for time precision
+timeFormat      general;
+timePrecision   6;
 
 // RUNTIME MODIFICATION
-runTimeModifiable true;     // Allow modification of parameters during simulation
-                           // Enables real-time adjustments for debugging
+runTimeModifiable true;
 
 // ADAPTIVE TIME STEPPING
-adjustTimeStep  yes;        // Enable automatic time step adjustment
-maxCo           0.5;        // Maximum Courant number for stability
-                           // Ensures CFL condition is satisfied
-
-maxDeltaT       1e-3;       // Maximum allowed time step (0.001 seconds)
-                           // Prevents time step from becoming too large
+adjustTimeStep  yes;          // Keep adaptive stepping on to protect stability
+maxCo           1.5;         // Relaxed Courant number limit to allow larger steps
+maxDeltaT       1e-2;        // Allow larger maximum timestep
 
 // FUNCTION OBJECTS FOR FORCE ANALYSIS
 // ===================================
