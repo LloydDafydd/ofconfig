@@ -160,6 +160,35 @@ mv -f 0/omega.nobom 0/omega || true
 # Ensure file ends with a newline
 tail -c1 0/omega | od -An -t u1 | grep -q . || echo >> 0/omega || true
 
+# Sanitize initial field files in 0/ to avoid malformed headers (CRLF, BOM, missing location)
+echo "Sanitizing 0/ field files to avoid header/encoding issues..."
+sanitize_field() {
+    f="$1"
+    [ -f "$f" ] || return
+    # remove UTF-8 BOM if present
+    awk 'NR==1{sub(/\xef\xbb\xbf/,"")};{print}' "$f" > "$f.nobom" || true
+    mv -f "$f.nobom" "$f" || true
+    # remove CR from CRLF
+    if command -v dos2unix >/dev/null 2>&1; then
+        dos2unix "$f" >/dev/null 2>&1 || true
+    else
+        sed -i 's/\r$//' "$f" || true
+    fi
+    # ensure file ends with newline
+    tail -c1 "$f" | od -An -t u1 | grep -q . || echo >> "$f" || true
+
+    # If file contains a FoamFile but no location, insert location "0" after class line
+    if grep -q "FoamFile" "$f" 2>/dev/null; then
+        if ! grep -q 'location[[:space:]]*"0"' "$f" 2>/dev/null; then
+            awk 'BEGIN{inF=0;done=0} /FoamFile/{print; inF=1; next} inF && /class[[:space:]]+/ && !done {print; print "    location    \"0\";"; done=1; next} {print}' "$f" > "$f.tmp" && mv -f "$f.tmp" "$f" || true
+        fi
+    fi
+}
+
+for fld in 0/*; do
+    sanitize_field "$fld"
+done
+
 # Domain decomposition for parallel execution
 echo "Decomposing domain for $SLURM_NTASKS cores..."
 # Use -copyZero to copy the entire 0/ directory into processor*/0/ instead of
