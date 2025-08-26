@@ -81,8 +81,8 @@ functions
         // time intervals (seconds). This avoids missing early-time data when
         // timestep sizes change. Set interval to 0.01s to capture data through
         // 0.55s (≈55 samples). Adjust as needed.
-        writeControl    runTime;
-        writeInterval   0.01;
+        writeControl    timeStep;
+        writeInterval   1;
         
         patches         (baseball);      // Surface patches to analyze (baseball surface)
         rho             rhoInf;          // Density specification method
@@ -100,8 +100,11 @@ functions
         libs            ("libforces.so"); // Correct library specification for v2312
     // Use runTime-based writing so coefficient outputs are recorded at
     // fixed physical times rather than every N timesteps.
-    writeControl    runTime;
-    writeInterval   0.01;
+
+    writeControl    timeStep;
+    writeInterval   1;
+
+    fields          (Cm Cd Cl Cs);
         
         patches         (baseball);      // Surface to analyze
         rho             rhoInf;          // Density specification
