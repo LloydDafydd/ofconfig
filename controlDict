@@ -1,3 +1,71 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+
+/* 
+ * CONTROL DICTIONARY FOR SPINNING BASEBALL CFD SIMULATION
+ * ========================================================
+ * 
+ * This file controls the overall simulation parameters for analyzing
+ * the aerodynamics of a spinning baseball (2400 RPM) in crossflow (85 mph).
+ * The simulation captures the Magnus effect and wake turbulence.
+ */
+
+FoamFile
+{
+    format      ascii;        // File format: ascii (human-readable) or binary
+    class       dictionary;   // OpenFOAM object type for configuration files
+    location    "system";     // Location within case directory structure
+    object      controlDict;  // Name identifier for this control dictionary
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// SOLVER SELECTION
+// pimpleFoam: Transient solver for incompressible, turbulent flow
+// Ideal for capturing unsteady flow around spinning objects
+application     pimpleFoam;
+
+// SIMULATION START CONTROL
+startFrom       startTime;   // Start simulation from specified time
+startTime       0;           // Initial time (seconds) - start from rest
+
+// SIMULATION END CONTROL
+stopAt          endTime;     // Stop condition: when endTime is reached
+endTime         0.55;        // Total simulation time (seconds)
+                            // 0.55 seconds is sufficient for trajectory analysis
+
+timePrecision   6;          // Number of digits for time precision
+// TIME STEPPING CONTROL
+deltaT          1e-3;        // Initial time step size (0.001 s)
+                            // Increased initial step to speed up runs; adaptive stepping limits it.
+
+// OUTPUT CONTROL (reduced I/O for performance)
+writeControl    timeStep;     // Write based on timesteps
+writeInterval   50;           // Save results every 50 timesteps (reduce I/O)
+
+purgeWrite      0;            // Keep all time directories for post-processing
+
+// FILE FORMAT CONTROL
+writeFormat     binary;       // Output format: binary for smaller file sizes
+writePrecision  6;            // Lower precision to speed up I/O
+writeCompression off;         // No compression for speed
+
+// TIME DISPLAY CONTROL
+timeFormat      general;
+timePrecision   6;
+
+// RUNTIME MODIFICATION
+runTimeModifiable true;
+
+// ADAPTIVE TIME STEPPING
+adjustTimeStep  yes;          // Keep adaptive stepping on to protect stability
+maxCo           1.5;         // Relaxed Courant number limit to allow larger steps
+maxDeltaT       1e-2;        // Allow larger maximum timestep
+
 // FUNCTION OBJECTS FOR FORCE ANALYSIS
 // ===================================
 functions
