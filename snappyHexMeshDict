@@ -153,7 +153,7 @@ addLayersControls
     // is the thickness of the layer furthest away from the wall.
     finalLayerThickness 0.15;  // thinner layer stack to reduce volume of layered cells
 
-    # minimum thickness
+    // minimum thickness
     minThickness 0.05;
 
     // If points get not extruded do nGrow layers of connected faces that are
