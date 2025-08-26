@@ -33,6 +33,15 @@ echo "=========================================="
 module purge
 module load openmpi/5.0.8/5.0.8
 
+# Configure OpenMP thread count to avoid oversubscription when running many MPI ranks.
+# Use SLURM's cpus-per-task when available; fallback to 1.
+if [ -n "$SLURM_CPUS_PER_TASK" ]; then
+    export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+else
+    export OMP_NUM_THREADS=1
+fi
+echo "Set OMP_NUM_THREADS=$OMP_NUM_THREADS"
+
 # Create working directory
 WORK_DIR="test_case_v85_s2000"
 mkdir -p $WORK_DIR
@@ -48,37 +57,11 @@ if [ -f "$HOME/Isambaseball/openfoam_case/system/functions/forceCoeffs" ]; then
     echo "Copied system/functions/forceCoeffs into case"
 fi
 
-# Patch controlDict to use larger time steps, adaptive stepping and reduce I/O
-CONTROL=system/controlDict
-if [ -f "$CONTROL" ]; then
-    echo "Patching $CONTROL for faster runs (larger deltaT, adaptive stepping, reduced I/O)"
-    # Set a larger initial time step (10x) and enable adaptive stepping
-    if grep -q "^\s*deltaT" "$CONTROL"; then
-        sed -i -E 's/^\s*deltaT.*/deltaT          1e-3;/' "$CONTROL"
-    else
-        echo "deltaT          1e-3;" >> "$CONTROL"
-    fi
-    if grep -q "^\s*adjustTimeStep" "$CONTROL"; then
-        sed -i -E 's/^\s*adjustTimeStep.*/adjustTimeStep   yes;/' "$CONTROL"
-    else
-        echo "adjustTimeStep   yes;" >> "$CONTROL"
-    fi
-    # Allow a larger Courant number (tuneable)
-    sed -i -E '/^\s*maxCo/ d' "$CONTROL"
-    echo "maxCo           1.5;" >> "$CONTROL"
-    sed -i -E '/^\s*maxDeltaT/ d' "$CONTROL"
-    echo "maxDeltaT       1e-2;" >> "$CONTROL"
+# ControlDict is edited directly in openfoam_case/system/controlDict
+# The job script will no longer modify controlDict at runtime so the case
+# uses the authoritative settings in the case directory.
 
-    # Reduce I/O frequency (write every N timesteps)
-    sed -i -E '/^\s*writeControl/ d' "$CONTROL"
-    echo "writeControl    timeStep;" >> "$CONTROL"
-    sed -i -E '/^\s*writeInterval/ d' "$CONTROL"
-    echo "writeInterval   50;" >> "$CONTROL"
-
-    # Reduce precision slightly to speed I/O
-    sed -i -E '/^\s*writePrecision/ d' "$CONTROL"
-    echo "writePrecision  6;" >> "$CONTROL"
-fi
+# ...existing code...
 
 # Install pre-generated mesh
 if [ -f "$HOME/Isambaseball/master_mesh.tar.gz" ]; then
@@ -353,7 +336,10 @@ fi
 echo "Starting CFD simulation..."
 echo "This will take 2-4 hours..."
 
-mpirun -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
+echo "Running pimpleFoam with MPI binding: OMP_NUM_THREADS=$OMP_NUM_THREADS"
+# Prefer explicit core binding to avoid thread/process oversubscription.
+# Export OMP_NUM_THREADS to MPI ranks, bind ranks to cores and map by socket.
+mpirun --report-bindings --bind-to core --map-by socket -x OMP_NUM_THREADS -np $SLURM_NTASKS pimpleFoam -parallel > log.pimpleFoam 2>&1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Simulation failed"
