@@ -82,7 +82,7 @@ functions
         // timestep sizes change. Set interval to 0.01s to capture data through
         // 0.55s (≈55 samples). Adjust as needed.
         writeControl    timeStep;
-        writeInterval   1;
+        writeInterval   50;
         
         patches         (baseball);      // Surface patches to analyze (baseball surface)
         rho             rhoInf;          // Density specification method
@@ -102,10 +102,8 @@ functions
     // fixed physical times rather than every N timesteps.
 
     writeControl    timeStep;
-    writeInterval   1;
-
-    fields          (Cm Cd Cl Cs);
-        
+    writeInterval   50;
+       
         patches         (baseball);      // Surface to analyze
         rho             rhoInf;          // Density specification
         rhoInf          1.225;          // Air density (kg/m³)
@@ -124,6 +122,17 @@ functions
         lRef            0.0732;         // Reference length: baseball diameter (m)
         Aref            0.004215;       // Reference area: baseball cross-section (πr²)
                                        // π × (0.0366)² = 0.004215 m²
+
+    writeCoeffs
+    {
+        Cm       yes; // Pitching Moment coefficient
+        Cd       yes; // Drag coefficient
+        Cl       yes; // Lift coefficient
+        Cs       yes; // <-- YOU NEED TO ADD THIS LINE FOR SIDE FORCE
+        // You can also add your custom ones if they are defined
+        Cl(f)    yes;
+        Cl(r)    yes;
+    }
         
         log             true;           // Print coefficients to terminal/log
     }
