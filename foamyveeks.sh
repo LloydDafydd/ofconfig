@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #SBATCH --job-name=foamVTK
 #SBATCH --partition=grace
 #SBATCH --nodes=1
