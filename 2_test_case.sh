@@ -394,6 +394,19 @@ fi
 echo "Reconstructing results..."
 reconstructPar > log.reconstructPar 2>&1
 
+# Ensure postProcessing function-object outputs exist for the whole time series.
+# Running foamPostProcess without -latestTime will process all time directories
+# and (re)generate postProcessing/forceCoeffs/0/coefficient.dat and
+# postProcessing/forces/0/force.dat from the reconstructed data.
+echo "Running foamPostProcess to (re)generate postProcessing force outputs..."
+if command -v foamPostProcess >/dev/null 2>&1; then
+    foamPostProcess -func forces > log.foamPostProcess 2>&1 || true
+    foamPostProcess -func forceCoeffs >> log.foamPostProcess 2>&1 || true
+    echo "foamPostProcess complete (see log.foamPostProcess)"
+else
+    echo "Warning: foamPostProcess not found in PATH; skipping post-processing step"
+fi
+
 # Extract force coefficients
 echo "Extracting force data..."
 grep -E "^[0-9]" postProcessing/forces/0/forceCoeffs.dat > forces_clean.dat 2>/dev/null || echo "Warning: Force coefficients not found"
