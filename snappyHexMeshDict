@@ -34,7 +34,7 @@ geometry
     baseball
     {
         type triSurfaceMesh;
-        file "baseball.stl";
+        file "constant/triSurface/baseball.stl";
         name baseball;
     }
     
@@ -59,11 +59,11 @@ geometry
 castellatedMeshControls
 {
     // Refinement parameters - high quality mesh for accuracy
-    maxLocalCells 3000000;   // Reduced for reasonable size
-    maxGlobalCells 6000000;  // Reduced for reasonable size
-    minRefinementCells 5;    // Reduced for finer refinement
+    maxLocalCells 1000000;   // Lower local cell cap to keep mesh size manageable
+    maxGlobalCells 2000000;  // Lower global cap; refinements concentrated near ball/wake
+    minRefinementCells 5;    // Minimum cells per refinement region
     maxLoadUnbalance 0.10;
-    nCellsBetweenLevels 2;   // Reduced for smoother transitions
+    nCellsBetweenLevels 3;   // Slightly larger buffer between refinement levels
     
     // Tolerance for point merging - ensures symmetry preservation
     tolerance 1e-4;  // Tighter tolerance for better symmetry
@@ -82,7 +82,7 @@ castellatedMeshControls
     {
         baseball
         {
-            level (6 7);  // HIGH surface resolution - 6 min, 7 max (more reasonable)
+            level (6 7);  // Keep very fine surface resolution on the baseball
             patchInfo
             {
                 type wall;
@@ -100,13 +100,13 @@ castellatedMeshControls
         refinementBox
         {
             mode inside;
-            levels ((1E15 2));  // Modest refinement near baseball (level 2 - much coarser)
+            levels ((1E15 3));  // Moderate refinement in the immediate vicinity of the baseball
         }
         
         wakeRefinementBox
         {
             mode inside; 
-            levels ((1E15 5));  // FINE wake resolution for Magnus effect (level 5 - restored)
+            levels ((1E15 5));  // Keep fine wake resolution
         }
     }
 
@@ -142,7 +142,7 @@ addLayersControls
     {
         baseball
         {
-            nSurfaceLayers 12;  // Good boundary layers (reduced from 15)
+            nSurfaceLayers 8;  // Fewer layers to reduce cell count while preserving wall resolution
         }
     }
 
@@ -151,11 +151,10 @@ addLayersControls
 
     // Wanted thickness of final added cell layer. If multiple layers
     // is the thickness of the layer furthest away from the wall.
-    finalLayerThickness 0.3;
+    finalLayerThickness 0.15;  // thinner layer stack to reduce volume of layered cells
 
-    // Minimum thickness of cell layer. If for any reason layer
-    // cannot be above minThickness do not add layer.
-    minThickness 0.1;
+    # minimum thickness
+    minThickness 0.05;
 
     // If points get not extruded do nGrow layers of connected faces that are
     // also not grown. This helps convergence of the layer addition process
