@@ -1,37 +1,37 @@
-/* Force coefficients function object file
-   Added to ensure pitchAxis is defined when OpenFOAM loads system/functions/forceCoeffs
-*/
-
 forceCoeffs
 {
     type            forceCoeffs;
     libs            ("libforces.so");
-    // Use runTime-based writing so outputs are produced at fixed physical
-    // time intervals (seconds). This avoids missing early-time data when
-    // timestep sizes change. Set interval to 0.01s to capture data through
-    // 0.55s (≈55 samples). Adjust as needed.
+    
     writeControl    timeStep;
     writeInterval   50;
 
     patches         (baseball);
     rho             rhoInf;
     rhoInf          1.225;
-    magUInf         38.0;        // default freestream velocity, overridden by job script if needed
+    magUInf         38.0;
+
+    // Use coordinateSystem approach for OpenFOAM 2312
+    coordinateSystem
+    {
+        type    cartesian;
+        origin  (0 0 0);
+        coordinateRotation
+        {
+            type    axesRotation;
+            e1      (1 0 0);    // x-axis (drag)
+            e2      (0 1 0);    // y-axis (side)
+            e3      (0 0 1);    // z-axis (lift)
+        }
+    }
 
     liftDir         (0 0 1);
     dragDir         (1 0 0);
     sideDir         (0 1 0);
 
-    // Some OpenFOAM builds expect pitchAxis/yawAxis entries; include defaults
-    pitchAxis       (0 1 0);
-    yawAxis         (0 0 1);
-
     CofR            (0 0 0);
     lRef            0.0732;
     Aref            0.004215;
-
-    fields          (Cm Cd Cl Cs Cl(f) Cl(r));
-
 
     log             true;
 }
