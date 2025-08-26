@@ -30,16 +30,8 @@ forceCoeffs
     lRef            0.0732;
     Aref            0.004215;
 
-    writeCoeffs
-    {
-        Cm       yes; // Pitching Moment coefficient
-        Cd       yes; // Drag coefficient
-        Cl       yes; // Lift coefficient
-        Cs       yes; // <-- YOU NEED TO ADD THIS LINE FOR SIDE FORCE
-        // You can also add your custom ones if they are defined
-        Cl(f)    yes;
-        Cl(r)    yes;
-    }
+    fields          (Cm Cd Cl Cs Cl(f) Cl(r));
+
 
     log             true;
 }
