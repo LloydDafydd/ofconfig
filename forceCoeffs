@@ -6,8 +6,12 @@ forceCoeffs
 {
     type            forceCoeffs;
     libs            ("libforces.so");
-    writeControl    timeStep;
-    writeInterval   10;
+    // Use runTime-based writing so outputs are produced at fixed physical
+    // time intervals (seconds). This avoids missing early-time data when
+    // timestep sizes change. Set interval to 0.01s to capture data through
+    // 0.55s (≈55 samples). Adjust as needed.
+    writeControl    runTime;
+    writeInterval   0.01;
 
     patches         (baseball);
     rho             rhoInf;
