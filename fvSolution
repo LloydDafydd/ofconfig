@@ -1,0 +1,153 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+
+/*
+ * FINITE VOLUME SOLUTION DICTIONARY FOR SPINNING BASEBALL CFD
+ * ===========================================================
+ * 
+ * This file defines numerical methods and solver settings for the
+ * pressure-velocity coupling and turbulence model equations.
+ * Optimized for stable, accurate simulation of spinning baseball aerodynamics.
+ */
+
+FoamFile
+{
+    format      ascii;        // Human-readable text format
+    class       dictionary;   // Dictionary type for solver configuration
+    location    "system";     // Location within case directory
+    object      fvSolution;   // Name identifier for this solution dictionary
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+/*
+ * LINEAR SYSTEM SOLVERS
+ * =====================
+ * Defines how to solve the linear systems arising from discretization
+ * of the governing equations (momentum, pressure, turbulence)
+ */
+solvers
+{
+    // PRESSURE EQUATION SOLVER
+    // GAMG (Geometric Algebraic Multigrid) - efficient for pressure Poisson equation
+    p
+    {
+        solver          GAMG;           // Geometric Algebraic Multigrid solver
+                                       // Optimal for elliptic equations like pressure
+    tolerance       1e-03;         // Further relaxed absolute convergence tolerance for speed
+                       // (was 1e-04)
+    relTol          0.5;           // Relaxed relative tolerance to allow faster solves
+                       // (was 0.2)
+        smoother        GaussSeidel;   // Smoothing method for multigrid
+                                       // Good balance of efficiency and robustness
+    }
+
+    // FINAL PRESSURE SOLVER (for PIMPLE outer corrections)
+    // Inherit settings from 'p' but with stricter tolerance
+    pFinal
+    {
+        $p;                           // Inherit all settings from 'p' solver
+        relTol          0;            // No relative tolerance - solve to absolute tolerance
+                                     // Ensures pressure is fully converged in final iteration
+    }
+
+    // VELOCITY EQUATION SOLVER
+    // SmoothSolver with Gauss-Seidel smoother for momentum equations
+    U
+    {
+        solver          smoothSolver;   // Iterative solver for vector equations
+                                       // Good for momentum equations with velocity coupling
+        smoother        symGaussSeidel; // Symmetric Gauss-Seidel smoother
+                                       // Improves convergence for symmetric systems
+    tolerance       1e-03;         // Relaxed tolerance for velocity to speed up solves
+        relTol          0;             // No relative tolerance - solve to absolute
+    }
+
+    // FINAL VELOCITY SOLVER (for PIMPLE outer corrections)
+    UFinal
+    {
+        $U;                           // Inherit all settings from 'U' solver
+        relTol          0;            // No relative tolerance in final correction
+                                     // Ensures momentum is fully resolved
+    }
+
+    // TURBULENCE MODEL EQUATIONS SOLVER
+    // Pattern matches k-ω SST turbulence model variables (k, omega)
+    "(k|omega|epsilon|nuTilda)"
+    {
+        solver          smoothSolver;   // Smooth solver for scalar transport equations
+        smoother        symGaussSeidel; // Symmetric Gauss-Seidel smoother
+                                       // Suitable for diffusion-dominated equations
+    tolerance       1e-05;         // Further relaxed turbulence tolerance for performance
+                       // (was 1e-06)
+    relTol          0.5;           // Relaxed relative tolerance for turbulence
+    }
+
+    // FINAL TURBULENCE SOLVER (for PIMPLE outer corrections)
+    "(k|omega|epsilon|nuTilda)Final"
+    {
+        solver          smoothSolver;   // Same solver as turbulence equations
+        smoother        symGaussSeidel; // Symmetric Gauss-Seidel smoother
+        tolerance       1e-08;         // Tight absolute tolerance
+        relTol          0;             // No relative tolerance - full convergence
+                                       // Ensures turbulence model is fully resolved
+    }
+}
+
+/*
+ * PIMPLE ALGORITHM CONTROL
+ * ========================
+ * Controls the PIMPLE pressure-velocity coupling algorithm
+ * Balances computational cost vs. accuracy for transient flows
+ */
+PIMPLE
+{
+    nOuterCorrectors 2;         // Number of outer PIMPLE corrections per time step
+                               // 2 corrections provide good accuracy for most flows
+                               // Higher values improve coupling but increase cost
+                               
+    nCorrectors     1;         // Number of pressure corrector steps per outer loop
+                              // 1 is sufficient for most incompressible flows
+                              
+    nNonOrthogonalCorrectors 1; // Corrections for mesh non-orthogonality
+                               // 1 correction handles moderate mesh skewness
+                               // Important for curved surfaces like baseball
+                               
+    pRefCell        0;         // Reference cell for pressure (cell index 0)
+                              // Sets absolute pressure level in closed domains
+                              
+    pRefValue       0;         // Reference pressure value (Pa)
+                              // Arbitrary datum for incompressible flow
+}
+
+/*
+ * UNDER-RELAXATION FACTORS
+ * ========================
+ * Control convergence stability by limiting changes between iterations
+ * Lower values improve stability but slow convergence
+ */
+relaxationFactors
+{
+    fields      // Field-based relaxation (for variables)
+    {
+        p               0.3;    // Pressure relaxation factor
+                               // Conservative value for stability
+                               // Prevents pressure oscillations
+    }
+    equations   // Equation-based relaxation (for discretized equations)
+    {
+        U               0.7;    // Velocity equation relaxation
+                               // Moderate value balances stability & convergence
+        k               0.7;    // Turbulent kinetic energy relaxation
+        omega           0.7;    // Specific dissipation rate relaxation
+        epsilon         0.7;    // Turbulent dissipation rate relaxation
+        nuTilda         0.7;    // Modified viscosity relaxation (Spalart-Allmaras)
+                               // All turbulence variables use same factor
+    }
+}
+
+// ************************************************************************* //
