@@ -15,5 +15,4 @@
 module purge
 module load openmpi/5.0.8/5.0.8
 
-cd $HOME/Isambaseball/jobs/results/v085_s2200_m015_a030
 foamToVTK
