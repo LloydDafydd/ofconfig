@@ -14,14 +14,12 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 /*
- * HIGH-RESOLUTION SNAPPYHEXMESH FOR BASEBALL WITH SEAM DETAIL
+ * SNAPPYHEXMESH CONFIGURATION FOR SYMMETRIC SPINNING BASEBALL
  * ===========================================================
  * 
- * Optimized for:
- * - Very fine surface resolution to capture seam geometry
- * - High wake refinement for Magnus effect
- * - Coarse background mesh to minimize computational cost
- * - Robust meshing for potentially problematic STL files
+ * This configuration ensures mesh symmetry is preserved while creating
+ * high-quality boundary layers around the spinning baseball. The mesh
+ * is optimized for 0.8-second simulation duration.
  */
 
 // Which of the steps to run
@@ -29,7 +27,8 @@ castellatedMesh true;
 snap            true;
 addLayers       true;
 
-// Geometry. Definition of all surfaces.
+// Geometry. Definition of all surfaces. All surfaces are of class
+// searchableSurface.
 geometry
 {
     baseball
@@ -37,73 +36,53 @@ geometry
         type triSurfaceMesh;
         file "baseball.stl";
         name baseball;
-        
-        // Fix for multiple unconnected parts and inconsistent normals
-        scale 1.0;          // Keep original size for now
-        mergeTolerance 1e-5; // Merge nearby vertices
-        
-        // Try to handle the 161 disconnected parts
-        regions
-        {
-            baseball
-            {
-                name baseball;
-            }
-        }
     }
     
-    // Very tight refinement box around baseball for seam capture
-    // Adjusted for 4.6cm baseball diameter
-    nearFieldBox
+    // Symmetric refinement box around baseball
+    refinementBox
     {
         type searchableBox;
-        min (-0.04 -0.04 -0.04);  // Adjusted for actual baseball size
-        max ( 0.04  0.04  0.04);
+        min (-0.2 -0.2 -0.2);
+        max ( 0.2  0.2  0.2);  // Symmetric refinement box around baseball
     }
     
-    // Extended wake refinement - asymmetric for spinning ball
+    // Additional wake refinement box for Magnus effect capture
     wakeRefinementBox
     {
         type searchableBox;
-        min (-0.03 -0.08 -0.08);  // Scaled for smaller baseball
-        max ( 0.25  0.08  0.08);  // Proportional wake capture
-    }
-    
-    // Intermediate transition box
-    intermediateBox
-    {
-        type searchableBox;
-        min (-0.06 -0.06 -0.06);  // Scaled appropriately
-        max ( 0.12  0.06  0.06);
+        min (-0.1 -0.3 -0.3);  // Extends more in lateral directions
+        max ( 0.8  0.3  0.3);  // Captures wake development
     }
 }
 
 // Settings for the castellatedMesh generation.
 castellatedMeshControls
 {
-    // Very conservative limits for problematic geometry
-    maxLocalCells 500000;    // Reduced to avoid memory issues with bad geometry
-    maxGlobalCells 1000000;  // Conservative global limit
-    minRefinementCells 0;    // Allow any refinement size
-    maxLoadUnbalance 0.3;    // Allow more imbalance
-    nCellsBetweenLevels 6;   // Larger buffer between levels
+    // Refinement parameters - high quality mesh for accuracy
+    maxLocalCells 1000000;   // Lower local cell cap to keep mesh size manageable
+    maxGlobalCells 2000000;  // Lower global cap; refinements concentrated near ball/wake
+    minRefinementCells 5;    // Minimum cells per refinement region
+    maxLoadUnbalance 0.10;
+    nCellsBetweenLevels 3;   // Slightly larger buffer between refinement levels
     
-    // Very loose tolerance for bad geometry
-    tolerance 1e-3;  // Much looser for problematic STL
+    // Tolerance for point merging - ensures symmetry preservation
+    tolerance 1e-4;  // Tighter tolerance for better symmetry
 
-    // Feature extraction disabled due to STL issues
+    // Explicit feature edge refinement (disabled for now)
     features
     (
-        // Disabled due to disconnected parts
+        // {
+        //     file "baseball.eMesh";
+        //     level 4;  // Increased to 4 for very fine features
+        // }
     );
 
-    // Surface based refinement - conservative for bad STL
+    // Surface based refinement
     refinementSurfaces
     {
         baseball
         {
-            level (4 5);  // Much lower refinement to avoid issues
-            
+            level (8 9);  // Keep very fine surface resolution on the baseball
             patchInfo
             {
                 type wall;
@@ -112,146 +91,149 @@ castellatedMeshControls
         }
     }
 
-    // Very permissive feature angle
-    resolveFeatureAngle 45;  // More permissive
+    // Resolve sharp angles - important for symmetric meshing
+    resolveFeatureAngle 30;
 
-    // Conservative refinement regions
+    // Region-wise refinement - symmetric about centerlines
     refinementRegions
     {
-        nearFieldBox
+        refinementBox
         {
             mode inside;
-            levels ((1E15 3));  // Lower refinement
-        }
-        
-        intermediateBox
-        {
-            mode inside;
-            levels ((1E15 2));  // Even lower
+            levels ((1E15 3));  // Moderate refinement in the immediate vicinity of the baseball
         }
         
         wakeRefinementBox
         {
             mode inside; 
-            levels ((1E15 3));  // Conservative wake refinement
+            levels ((1E15 5));  // Keep fine wake resolution
         }
     }
 
-    // Mesh selection point
-    locationInMesh (0.1 0.0 0.0);
+    // Mesh selection - positioned for symmetric flow
+    locationInMesh (1.0 0.0 0.0);  // Point in flow domain, on centerline for symmetry
 
-    // Very permissive settings for bad geometry
+    // Whether any faceZones (as specified in the refinementSurfaces)
+    // are only on the boundary of corresponding cellZones or also allow
+    // free-standing zone faces. Not used if there are no faceZones.
     allowFreeStandingZoneFaces true;
-    handleSnapProblems true;
-    useTopologicalSnapDetection false;
-    checkGeometry false;             // Skip geometry checks
-    mergeTolerance 1e-3;            // Loose merging
-    
-    // Additional robustness settings
-    insidePoint (0.1 0.0 0.0);
-    outsidePoints ();
 }
 
-// Enhanced snapping settings for high-resolution surfaces
+// Settings for the snapping.
 snapControls
 {
-    nSmoothPatch 5;      // More smoothing for better surface conformity
-    tolerance 1.0;       // Tighter tolerance
-    nSolveIter 50;       // More iterations for complex geometry
-    nRelaxIter 8;        // More relaxation steps
-    nFeatureSnapIter 15; // More feature snapping iterations
-    
-    // Feature snapping settings
+    nSmoothPatch 3;
+    tolerance 2.0;  // Balanced tolerance for symmetry preservation
+    nSolveIter 30;
+    nRelaxIter 5;
+    nFeatureSnapIter 10;
     implicitFeatureSnap false;
     explicitFeatureSnap true;
     multiRegionFeatureSnap false;
-    
-    // Enhanced controls for difficult geometries
-    detectNearSurfaces true;  // Better surface detection
-    strictRegionSnap true;    // Stricter snapping for quality
 }
 
-// Layer addition optimized for high surface resolution
+// Settings for the layer addition.
 addLayersControls
 {
     relativeSizes true;
 
-    // Boundary layer specification
+    // Per final patch (so not geometry!) the layer information
     layers
     {
         baseball
         {
-            nSurfaceLayers 10;  // More layers for better boundary layer resolution
+            nSurfaceLayers 8;  // Fewer layers to reduce cell count while preserving wall resolution
         }
     }
 
-    // Conservative expansion for high-resolution surface
-    expansionRatio 1.15;  // Smaller ratio for smoother transition
+    // Expansion factor for layer mesh
+    expansionRatio 1.2;
 
-    // Layer thickness - scale with surface resolution
-    finalLayerThickness 0.1;   // Thinner final layer
-    minThickness 0.01;         // Much thinner minimum
-    
-    // Conservative growth settings
-    nGrow 2;  // Allow some growth for better convergence
+    // Wanted thickness of final added cell layer. If multiple layers
+    // is the thickness of the layer furthest away from the wall.
+    finalLayerThickness 0.15;  // thinner layer stack to reduce volume of layered cells
 
-    // Stricter angle controls for seam preservation
-    featureAngle 45;        // More conservative for complex features
-    slipFeatureAngle 20;    // Tighter slip control
-    
-    // Enhanced iteration controls
-    nRelaxIter 8;           // More relaxation for complex geometry
-    nSmoothSurfaceNormals 3; // More surface normal smoothing
-    nSmoothNormals 5;       // More interior smoothing
-    nSmoothThickness 15;    // More thickness smoothing
-    
-    // Quality controls for layers
-    maxFaceThicknessRatio 0.4;    // Stricter face thickness control
-    maxThicknessToMedialRatio 0.2; // Tighter medial ratio
+    // minimum thickness
+    minThickness 0.05;
+
+    // If points get not extruded do nGrow layers of connected faces that are
+    // also not grown. This helps convergence of the layer addition process
+    // close to features.
+    nGrow 0;
+
+    // Advanced settings
+
+    // When not to extrude surface. 0 is flat surface, 90 is when two faces
+    // are perpendicular
+    featureAngle 60;
+
+    // At non-patched sides allow mesh to slip if extrusion direction makes
+    // angle larger than slipFeatureAngle.
+    slipFeatureAngle 30;
+
+    // Maximum number of snapping relaxation iterations. Should stop
+    // before upon reaching a correct mesh.
+    nRelaxIter 5;  // Increased for better symmetry
+
+    // Number of smoothing iterations of surface normals
+    nSmoothSurfaceNormals 1;
+
+    // Number of smoothing iterations of interior mesh movement direction
+    nSmoothNormals 3;
+
+    // Smooth layer thickness over surface patches
+    nSmoothThickness 10;
+
+    // Stop layer growth on highly warped cells
+    maxFaceThicknessRatio 0.5;
+
+    // Reduce layer growth where ratio thickness to medial
+    // distance is large
+    maxThicknessToMedialRatio 0.3;
+
+    // Angle used to pick up medial axis points
+    // Note: changed(corrected) w.r.t 17x! 90 degrees corresponds to 130 in 17x.
     minMedialAxisAngle 90;
-    
-    // Buffer and iteration controls
+
+    // Create buffer region for new layer terminations
     nBufferCellsNoExtrude 0;
-    nLayerIter 75;  // More iterations for convergence
-    
-    // Additional controls for complex surfaces
-    additionalReporting true;  // Better diagnostics
-    mergeEdges true;          // Help with seam edges
+
+    // Overall max number of layer addition iterations. The mesher will exit
+    // if it reaches this number of iterations; possibly with an illegal
+    // mesh.
+    nLayerIter 50;
 }
 
-// Strict quality controls for high-resolution mesh
+// Generic mesh quality settings. At any undoable phase these determine
+// where to undo.
 meshQualityControls
 {
-    // Tightened quality metrics
-    maxNonOrtho 60;           // Stricter orthogonality
-    maxBoundarySkewness 15;   // Tighter boundary skewness
-    maxInternalSkewness 3;    // Very tight internal skewness
-    maxConcave 75;            // Conservative concavity
-    minVol 1e-15;             // Smaller volume tolerance
-    minTetQuality 1e-20;      // Very strict tet quality
+    // Tightened quality controls for symmetric mesh
+    maxNonOrtho 65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave 80;
+    minVol 1e-13;
+    minTetQuality 1e-15;  // Stricter quality for symmetry
     minArea -1;
-    minTwist 0.01;            // Tighter twist control
-    minDeterminant 0.005;     // Higher determinant requirement
-    minFaceWeight 0.05;       // Conservative face weight
-    minVolRatio 0.02;         // Higher volume ratio
+    minTwist 0.02;
+    minDeterminant 0.001;
+    minFaceWeight 0.02;
+    minVolRatio 0.01;
     minTriangleTwist -1;
-    
-    // Smoothing controls
-    nSmoothScale 6;           // More smoothing passes
-    errorReduction 0.8;       // More aggressive error reduction
-    
-    // Relaxed settings for difficult areas
+
+    // Advanced
+    nSmoothScale 4;
+    errorReduction 0.75;
     relaxed
     {
-        maxNonOrtho 70;
-        maxBoundarySkewness 25;
-        maxInternalSkewness 6;
-        minTetQuality 1e-25;
+        maxNonOrtho 75;
     }
 }
 
-// Debug and merge settings
+// Advanced
 debug 0;
-mergeTolerance 1e-6;  // Very tight merging for feature preservation
+// Generic mesh quality settings - tight tolerance for symmetry
+mergeTolerance   1e-5;  // Very tight merging for feature preservation
 
 // ************************************************************************* //
