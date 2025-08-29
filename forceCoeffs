@@ -1,37 +1,39 @@
 forceCoeffs
-{
-    type            forceCoeffs;
-    libs            ("libforces.so");
-    
-    writeControl    timeStep;
-    writeInterval   50;
-
-    patches         (baseball);
-    rho             rhoInf;
-    rhoInf          1.225;
-    magUInf         38.0;
-
-    // Use coordinateSystem approach for OpenFOAM 2312
-    coordinateSystem
     {
-        type    cartesian;
-        origin  (0 0 0);
-        coordinateRotation
+        type            forceCoeffs;
+        libs            ("libforces.so");
+        writeControl    timeStep;
+        writeInterval   50;
+       
+        patches         (baseball);
+        rho             rhoInf;
+        rhoInf          1.225;
+        magUInf         31.2928;        // Will be updated by job script
+        
+        liftDir         (0 0 1);        // Lift direction (z-axis, vertical)
+        dragDir         (1 0 0);        // Drag direction (x-axis, flow direction)
+        sideDir         (0 1 0);        // Side force direction (y-axis, lateral)
+
+        coordinateSystem
         {
-            type    axesRotation;
-            e1      (1 0 0);    // x-axis (drag)
-            e2      (0 1 0);    // y-axis (side)
-            e3      (0 0 1);    // z-axis (lift)
+            type    cartesian;
+            origin  (0 0 0);
+            coordinateRotation
+            {
+                type    axesRotation;
+                e1      (1 0 0);    // x-axis (drag)
+                e2      (0 1 0);    // y-axis (side)
+                e3      (0 0 1);    // z-axis (lift)
+            }
         }
+
+        pitchAxis       (0 1 0);        // Pitch axis (y-axis, lateral)
+
+        CofR            (0 0 0);        // Center of rotation
+        lRef            0.0732;         // Baseball diameter (m)
+        Aref            0.004215;       // Baseball cross-section (πr²)
+        
+        fields          (Cm Cd Cl Cs Cl(f) Cl(r));
+
+        log             true;
     }
-
-    liftDir         (0 0 1);
-    dragDir         (1 0 0);
-    sideDir         (0 1 0);
-
-    CofR            (0 0 0);
-    lRef            0.0732;
-    Aref            0.004215;
-
-    log             true;
-}
