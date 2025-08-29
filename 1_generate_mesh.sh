@@ -33,6 +33,20 @@ cd $MESH_DIR
 # Copy OpenFOAM case files
 cp -r ../openfoam_case/* .
 
+# Defensive check: ensure system/blockMeshDict was copied (some shells/globs may skip it)
+if [ ! -f system/blockMeshDict ]; then
+    echo "system/blockMeshDict missing after copy; attempting explicit copy..."
+    if [ -f ../openfoam_case/system/blockMeshDict ]; then
+        mkdir -p system
+        cp -f ../openfoam_case/system/blockMeshDict system/blockMeshDict
+        echo "Copied ../openfoam_case/system/blockMeshDict -> system/blockMeshDict"
+    else
+        echo "ERROR: ../openfoam_case/system/blockMeshDict not found. Listing ../openfoam_case/system:" >&2
+        ls -la ../openfoam_case/system || true
+        exit 1
+    fi
+fi
+
 # Copy scaled STL
 mkdir -p constant/triSurface
 cp $HOME/Isambaseball/baseball.stl constant/triSurface/
@@ -51,6 +65,9 @@ check_error "Background mesh generation"
 # Get initial mesh statistics
 INITIAL_CELLS=$(foamDictionary constant/polyMesh/owner -entry nEntries -value 2>/dev/null)
 echo "✓ Background mesh: $INITIAL_CELLS cells"
+
+echo "MIDDLE STEP WE DOIN SURFACE EXTRACT NOW!!!"
+surfaceFeatureExtract
 
 # Generate high-quality mesh
 echo "Step 3: Generating VERY HIGH-RESOLUTION surface mesh..."
