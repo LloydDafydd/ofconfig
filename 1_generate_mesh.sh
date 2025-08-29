@@ -67,7 +67,7 @@ INITIAL_CELLS=$(foamDictionary constant/polyMesh/owner -entry nEntries -value 2>
 echo "✓ Background mesh: $INITIAL_CELLS cells"
 
 echo "MIDDLE STEP WE DOIN SURFACE EXTRACT NOW!!!"
-surfaceFeatureExtract
+surfaceFeatureExtract > log.surfaceFeatreExtract 2>&1
 
 # Generate high-quality mesh
 echo "Step 3: Generating VERY HIGH-RESOLUTION surface mesh..."
