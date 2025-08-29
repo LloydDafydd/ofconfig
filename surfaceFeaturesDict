@@ -23,7 +23,7 @@ baseball
 {
     surfaces
     (
-        "constant/triSurface/baseball.stl"
+        "baseball.stl"
     );
 
     // Mark edges whose adjacent surface normals are at an angle greater
