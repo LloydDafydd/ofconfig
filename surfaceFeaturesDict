@@ -51,7 +51,7 @@ baseball
 features
 (
     {
-        file "constant/triSurface/baseball.eMesh";
+        file "baseball.eMesh";
         // High level to capture fine stitch edges; adjust down to test quickly
         level 12;
     }
