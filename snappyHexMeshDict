@@ -59,22 +59,23 @@ geometry
 castellatedMeshControls
 {
     // Refinement parameters - high quality mesh for accuracy
-    maxLocalCells 1000000;   // Lower local cell cap to keep mesh size manageable
-    maxGlobalCells 2000000;  // Lower global cap; refinements concentrated near ball/wake
-    minRefinementCells 5;    // Minimum cells per refinement region
+    // Increased cell caps to allow aggressive local refinement around seams.
+    maxLocalCells 3000000;   // allow more local refinement near the baseball
+    maxGlobalCells 8000000;  // larger global cap to avoid premature stopping
+    minRefinementCells 10;   // require slightly more cells per refinement region
     maxLoadUnbalance 0.10;
-    nCellsBetweenLevels 3;   // Slightly larger buffer between refinement levels
-    
-    // Tolerance for point merging - ensures symmetry preservation
-    tolerance 1e-4;  // Tighter tolerance for better symmetry
+    nCellsBetweenLevels 2;   // tighter transition between levels for less smoothing
 
-    // Explicit feature edge refinement (disabled for now)
+    // Tolerance for point merging - ensures symmetry preservation and seam fidelity
+    tolerance 1e-6;  // much tighter tolerance to avoid merging seam features
+
+    // Enable explicit feature edge refinement from an eMesh (extract with surfaceFeatureExtract)
     features
     (
-        // {
-        //     file "baseball.eMesh";
-        //     level 4;  // Increased to 4 for very fine features
-        // }
+        {
+            file "baseball.eMesh";
+            level 12;  // very fine feature edge refinement to capture stitch geometry
+        }
     );
 
     // Surface based refinement
@@ -82,7 +83,9 @@ castellatedMeshControls
     {
         baseball
         {
-            level (8 9);  // Keep very fine surface resolution on the baseball
+            // Very aggressive surface refinement to resolve the seams and stitches.
+            // The pair (minLevel maxLevel) controls castellated refinement near the surface.
+            level (12 15);
             patchInfo
             {
                 type wall;
@@ -91,8 +94,8 @@ castellatedMeshControls
         }
     }
 
-    // Resolve sharp angles - important for symmetric meshing
-    resolveFeatureAngle 30;
+    // Resolve sharp angles - important for seam/stitch capture
+    resolveFeatureAngle 20;
 
     // Region-wise refinement - symmetric about centerlines
     refinementRegions
@@ -110,8 +113,8 @@ castellatedMeshControls
         }
     }
 
-    // Mesh selection - positioned for symmetric flow
-    locationInMesh (1.0 0.0 0.0);  // Point in flow domain, on centerline for symmetry
+    // Mesh selection - positioned for symmetric flow (choose point inside refinement region)
+    locationInMesh (0.0 0.0 0.0);  // point near the baseball centre for symmetry and seam capture
 
     // Whether any faceZones (as specified in the refinementSurfaces)
     // are only on the boundary of corresponding cellZones or also allow
@@ -142,19 +145,22 @@ addLayersControls
     {
         baseball
         {
-            nSurfaceLayers 8;  // Fewer layers to reduce cell count while preserving wall resolution
+            // Increase number of surface layers to capture steep gradients near stitches
+            nSurfaceLayers 20;
+            // control the thickness of each layer individually if needed (optional)
+            // thickness (0.005 0.004 0.003 ...)
         }
     }
 
     // Expansion factor for layer mesh
-    expansionRatio 1.2;
+    expansionRatio 1.08;  // near-uniform layers to keep resolution near seam
 
     // Wanted thickness of final added cell layer. If multiple layers
     // is the thickness of the layer furthest away from the wall.
-    finalLayerThickness 0.15;  // thinner layer stack to reduce volume of layered cells
+    finalLayerThickness 0.02;  // much thinner to resolve seams
 
     // minimum thickness
-    minThickness 0.05;
+    minThickness 0.001;  // allow very thin first cell near stitches
 
     // If points get not extruded do nGrow layers of connected faces that are
     // also not grown. This helps convergence of the layer addition process
