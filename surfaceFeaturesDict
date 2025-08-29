@@ -1,0 +1,61 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  2312
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    object      surfaceFeaturesDict;
+}
+
+/*
+  surfaceFeaturesDict tuned for baseball seam/stitch extraction.
+  Uses a tutorial-style per-surface block with closeness output and
+  writes a high-fidelity eMesh (constant/triSurface/baseball.eMesh)
+  for explicit feature snapping in snappyHexMesh.
+*/
+
+baseball
+{
+    surfaces
+    (
+        "constant/triSurface/baseball.stl"
+    );
+
+    // Mark edges whose adjacent surface normals are at an angle greater
+    // than includedAngle as features. Lower values capture more subtle
+    // curvature changes (useful to pick out stitch geometry).
+    includedAngle           120;
+
+    // Perform geometric tests only (do not mark region edges)
+    geometricTestOnly       yes;
+
+    // Output options
+    writeObj                yes;    // write an obj of extracted features
+    verboseObj              yes;
+    writeVTK                yes;    // also write VTK for visual inspection
+
+    // Provide closeness diagnostics to help detect near-intersections or
+    // tiny gaps in the STL which can confuse feature detection.
+    closeness
+    {
+        pointCloseness      yes;
+    }
+}
+
+// Additionally request writing a high-resolution eMesh used by snappyHexMesh
+features
+(
+    {
+        file "constant/triSurface/baseball.eMesh";
+        // High level to capture fine stitch edges; adjust down to test quickly
+        level 12;
+    }
+);
+
+mergeTolerance 1e-6;
+
